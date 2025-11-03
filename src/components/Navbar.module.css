@@ -1,28 +1,38 @@
 .navbar {
-  background-color: black;
-  color: white;
+  background: rgba(255, 255, 255, 0.15); /* light transparent glass */
+  backdrop-filter: blur(12px); /* soft blur */
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+  color: var(--foreground);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 2rem;
+  padding: 2rem 2rem;
+  border-radius: var(--radius-md);
+}
+
+.navbar:hover {
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.35);
 }
 
 .logo {
-  font-size: 1.5rem;
-  font-weight: bold;
+  font-family: var(--font-sf);
+  font-weight: var(--font-weight-medium);
+  font-size: 1.25rem;
 }
 
 .links {
   display: flex;
-  gap: 1.5rem;
+  gap: 2rem;
 }
 
 .link {
-  color: white;
+  color: var(--sidebar-foreground);
   text-decoration: none;
-  transition: color 0.2s ease;
+  transition: color 0.2s;
 }
 
 .link:hover {
-  color: gray;
+  color: var(--accent-foreground);
 }
