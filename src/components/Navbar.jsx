@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 function Navbar() {
   return (
-    <nav style={{ background: "black", padding: "1rem", display: "cover", justifyContent: "space-between" }}>
+    <nav style={{ background: "black", padding: "1rem", display: "flex", justifyContent: "space-between" }}>
       <h1 style={{ color: "white" }}>DarcOS</h1>
       <div>
         <Link to="/" style={{ color: "white", margin: "0 1rem" }}>Home</Link>
@@ -13,4 +13,4 @@ function Navbar() {
   );
 }
 
-export default Navbar;
+export default Navbar; 1
