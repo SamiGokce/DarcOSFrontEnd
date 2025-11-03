@@ -1,13 +1,14 @@
 import { Link } from "react-router-dom";
+import styles from "./Navbar.module.css"; // ✅ Import the CSS module
 
 function Navbar() {
   return (
-    <nav style={{ background: "black", padding: "1rem", display: "flex", justifyContent: "space-between" }}>
-      <h1 style={{ color: "white" }}>DarcOS</h1>
-      <div>
-        <Link to="/" style={{ color: "white", margin: "0 1rem" }}>Home</Link>
-        <Link to="/projects" style={{ color: "white", margin: "0 1rem" }}>Projects</Link>
-        <Link to="/about" style={{ color: "white", margin: "0 1rem" }}>About</Link>
+    <nav className={styles.navbar}>
+      <h1 className={styles.logo}>DarcOS</h1>
+      <div className={styles.links}>
+        <Link to="/" className={styles.link}>Home</Link>
+        <Link to="/projects" className={styles.link}>Projects</Link>
+        <Link to="/about" className={styles.link}>About</Link>
       </div>
     </nav>
   );

@@ -1,3 +1,9 @@
+import styles from "./Home.module.css";
+
 export default function Home() {
-  return <h2>Welcome to DarcOS Home Page</h2>;
+  return (
+    <div className={styles.container}>
+      <h2 className={styles.title}>Welcome to DarcOS Home Page</h2>
+    </div>
+  );
 }
