@@ -1,38 +1,59 @@
 .navbar {
-  background: rgba(255, 255, 255, 0.15); /* light transparent glass */
-  backdrop-filter: blur(12px); /* soft blur */
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
-  color: var(--foreground);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  margin: 1rem auto;
+  width: 92%;
+  padding: 0.8rem 1.6rem;
+  border-radius: var(--radius);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2rem 2rem;
-  border-radius: var(--radius-md);
-}
-
-.navbar:hover {
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.35);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+  transition: var(--transition);
 }
 
 .logo {
-  font-family: var(--font-sf);
-  font-weight: var(--font-weight-medium);
-  font-size: 1.25rem;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .links {
   display: flex;
-  gap: 2rem;
+  gap: 1.5rem;
 }
 
 .link {
-  color: var(--sidebar-foreground);
   text-decoration: none;
-  transition: color 0.2s;
+  font-weight: 400;
+  color: var(--text-color);
+  opacity: 0.8;
+  transition: var(--transition);
 }
 
 .link:hover {
-  color: var(--accent-foreground);
+  opacity: 1;
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+button:hover {
+  background: #5b4ee3;
+  transform: scale(1.05);
 }

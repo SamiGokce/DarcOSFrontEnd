@@ -1,0 +1,214 @@
+/* ===== base.css ===== */
+
+/* Apple SF Font */
+@import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600&display=swap');
+
+/* ----------- GLOBAL VARIABLES ----------- */
+:root {
+  --background: linear-gradient(120deg, #f7f7fa 0%, #eef1f8 100%);
+  --glass-bg: rgba(255, 255, 255, 0.35);
+  --glass-border: rgba(255, 255, 255, 0.25);
+  --text-color: #1a1a1a;
+  --accent: #695acd4f;
+  --radius: 16px;
+  --transition: all 0.25s ease;
+}
+
+/* ----------- GLOBAL RESET ----------- */
+* {
+  box-sizing: border-box;
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  color: var(--text-color);
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--background);
+  min-height: 100vh;
+  transition: background 0.5s ease;
+}
+
+/* ----------- ANIMATIONS ----------- */
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ----------- GLASS EFFECT ----------- */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+
+  /* ✨ Smooth pulsing and hover transitions */
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.25s ease;
+}
+
+/* ----------- BUTTONS ----------- */
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 0.5rem 1.2rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+button:hover {
+  background: #5a4ee350;
+  transform: scale(1.05);
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+/* ----------- GLOBAL LIGHT REFLECTION LAYER ----------- */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0));
+  pointer-events: none;
+  z-index: -1;
+}
+
+.instruction-button {
+  background: linear-gradient(
+    135deg,
+    rgba(190, 180, 255, 0.25),
+    rgba(220, 210, 255, 0.35)
+  );
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(220, 210, 255, 0.45);
+  border-radius: 14px;
+  padding: 0.9rem 1.5rem;
+  width: 100%;
+  color: #1b1b1f;
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(160, 140, 255, 0.06);
+  transition: all 0.25s ease;
+}
+
+.instruction-button:hover {
+  background: linear-gradient(
+    145deg,
+    rgba(190, 180, 255, 0.4),
+    rgba(220, 210, 255, 0.45)
+  );
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(160, 140, 255, 0.12);
+}
+
+.instruction-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  width: 100%;
+}
+
+/* ========================= */
+/* DARCOS — CONTROL BUTTONS  */
+/* ========================= */
+
+.sim-button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+/* Refined glossy control button */
+.sim-button {
+  background: linear-gradient(
+    145deg,
+    rgba(200, 195, 255, 0.313),
+    rgba(220, 215, 255, 0.22)
+  );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(210, 200, 255, 0.3);
+  color: #1b1b1f;
+  font-weight: 500;
+  font-size: 0.96rem;
+  letter-spacing: 0.01em;
+  border-radius: 14px;
+  padding: 0.7rem 1.2rem;
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", "Inter", sans-serif;
+  box-shadow: 0 4px 12px rgba(100, 80, 255, 0.04);
+  transition: all 0.25s ease;
+  width: 100%;
+  text-align: center;
+}
+
+.sim-button:hover {
+  background: linear-gradient(
+    145deg,
+    rgba(210, 205, 255, 0.3),
+    rgba(230, 225, 255, 0.35)
+  );
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(100, 80, 255, 0.08);
+}
+
+.sim-button:active {
+  transform: translateY(0);
+  box-shadow: 0 3px 8px rgba(100, 80, 255, 0.05);
+}
+
+/* File Upload — blue glossy version */
+.file-upload {
+  background: linear-gradient(
+    145deg,
+    rgba(180, 210, 255, 0.2),
+    rgba(200, 230, 255, 0.3)
+  );
+  border: 1px solid rgba(30, 0, 61, 0.422);
+  border-radius: 12px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.95rem;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", "Inter", sans-serif;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #1b1b1f;
+  transition: all 0.25s ease;
+  display: inline-block;
+  text-align: center;
+}
+
+.file-upload:hover {
+  background: linear-gradient(
+    145deg,
+    rgba(63, 13, 99, 0.492),
+    rgba(43, 6, 71, 0.315)
+  );
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(71, 22, 135, 0.273);
+}
+
+input[type="file"] {
+  display: none;
+}
+

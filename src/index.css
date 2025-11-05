@@ -1,0 +1,15 @@
+/* Neutral link styling */
+a {
+  color: var(--foreground);
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+a:hover {
+  opacity: 1;
+}
+
+a:visited {
+  color: var(--foreground); /* prevents purple visited links */
+}
