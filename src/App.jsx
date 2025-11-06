@@ -7,10 +7,14 @@ import Registers from "./pages/Registers";
 import History from "./pages/History";
 import Canvas from "./pages/Canvas";
 import IsaReference from "./pages/IsaReference";
+import { DndProvider } from "react-dnd";  // Import DndProvider
+import { HTML5Backend } from "react-dnd-html5-backend"; // Import HTML5Backend for drag-and-drop
+
+import './assets/base.css'; // Ensure this is imported in your root file
 
 export default function App() {
   return (
-    <>
+    <DndProvider backend={HTML5Backend}>  {/* Wrap the app with DndProvider */}
       <Navbar />
       <Routes>
         <Route path="/" element={<Home />} />
@@ -21,6 +25,6 @@ export default function App() {
         <Route path="/canvas" element={<Canvas />} />
         <Route path="/isa" element={<IsaReference />} />
       </Routes>
-    </>
+    </DndProvider>
   );
 }

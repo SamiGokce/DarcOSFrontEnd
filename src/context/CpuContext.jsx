@@ -3,8 +3,7 @@ import { createContext, useContext, useState } from "react";
 const CpuContext = createContext();
 
 export function CpuProvider({ children }) {
-  // 8 general-purpose registers (R0–R7)
-  const [registers, setRegisters] = useState(Array(8).fill(0));
+  const [registers, setRegisters] = useState(Array(8).fill(0)); // 8 general-purpose registers
   const [pc, setPc] = useState(0); // Program Counter
   const [program, setProgram] = useState([]); // Machine words
   const [history, setHistory] = useState([]);
@@ -31,24 +30,24 @@ export function CpuProvider({ children }) {
     // Decode & execute a few sample opcodes
     switch (instr) {
       // ADD (R1 = R2 + R3)
-      case 0x01010203000000000000000000000000n:
+      case 0x01010203000000000000000000000000:
         newRegs[1] = newRegs[2] + newRegs[3];
         opName = "ADD R1 = R2 + R3";
         break;
 
       // ADDI (R1 = R2 + 5)
-      case 0x02010203000000000000000000000000n:
+      case 0x02010203000000000000000000000000:
         newRegs[1] = newRegs[2] + 5;
         opName = "ADDI R1 = R2 + 5";
         break;
 
       // NOP (do nothing)
-      case 0x00000000000000000000000000000000n:
+      case 0x00000000000000000000000000000000:
         opName = "NOP (no operation)";
         break;
 
       // HALT (stop execution)
-      case 0x3F000000000000000000000000000000n:
+      case 0x3F000000000000000000000000000000:
         opName = "HALT (stop execution)";
         setHistory((h) => [...h, { note: "HALT instruction reached." }]);
         return;
