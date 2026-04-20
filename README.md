@@ -1,16 +1,95 @@
-# React + Vite
+# DarcOS Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This repository contains a React/Vite frontend and a Django backend.
 
-Currently, two official plugins are available:
+## Run Modes
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Development
 
-## React Compiler
+Development uses two processes:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Django backend at `http://127.0.0.1:8000/`
+- Vite frontend at `http://127.0.0.1:5173/`
 
-## Expanding the ESLint configuration
+Vite proxies `/api` and `/admin` to Django during development.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Production
+
+Production uses one process:
+
+- Django at `http://127.0.0.1:8000/`
+
+Django serves the built frontend from `frontend/dist`.
+
+## Scripts
+
+Use the scripts in the `scripts/` folder:
+
+- `scripts/start-dev.ps1` starts both apps in development mode.
+- `scripts/start-prod.ps1` builds the frontend, collects Django static files, and starts Django in production mode.
+
+## Setup
+
+### Backend
+
+```powershell
+cd backend
+uv venv --python 3.10
+uv pip install -r requirements.txt
+```
+
+### Frontend
+
+```powershell
+cd frontend
+npm install
+```
+
+## Manual Start
+
+### Development
+
+```powershell
+.\scripts\start-dev.ps1
+```
+
+Or run them manually:
+
+```powershell
+Set-Location backend
+$env:ENVIRONMENT = "development"
+.\.venv\Scripts\python.exe manage.py runserver 8000
+```
+
+In a second terminal:
+
+```powershell
+Set-Location frontend
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+### Production
+
+```powershell
+.\scripts\start-prod.ps1
+```
+
+Or run them manually:
+
+```powershell
+Set-Location frontend
+npm run build
+```
+
+```powershell
+Set-Location backend
+$env:ENVIRONMENT = "production"
+.\.venv\Scripts\python.exe manage.py collectstatic --noinput
+.\.venv\Scripts\python.exe manage.py runserver 8000
+```
+
+## Notes
+
+- Development mode depends on the frontend dev server proxying backend requests.
+- Production mode only needs `http://127.0.0.1:8000/`.
+- If you change frontend code in production mode, rebuild the frontend before restarting Django.

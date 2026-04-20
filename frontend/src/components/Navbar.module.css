@@ -42,18 +42,24 @@
   transform: translateY(-1px);
 }
 
-button {
+.controls {
+  display: flex;
+  align-items: center;
+}
+
+.loginButton {
   background: var(--accent);
   color: white;
-  border: none;
   border-radius: 12px;
-  padding: 0.4rem 1rem;
+  padding: 0.45rem 1rem;
   font-size: 0.9rem;
-  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
   transition: var(--transition);
 }
 
-button:hover {
+.loginButton:hover {
   background: #5b4ee3;
   transform: scale(1.05);
 }
