@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules
 dist
+app/backend/.venv
+app/backend/staticfiles
 dist-ssr
 *.local
 

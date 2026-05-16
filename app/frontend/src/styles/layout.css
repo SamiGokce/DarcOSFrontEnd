@@ -1,0 +1,95 @@
+/* Page shells */
+.page {
+  padding: var(--page-padding-y) var(--page-padding-x);
+}
+
+.page--compact {
+  padding: var(--page-padding-y-sm) var(--page-padding-x);
+}
+
+.page--center {
+  text-align: center;
+}
+
+.page__title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-tight);
+}
+
+.page__title--hero {
+  font-size: var(--text-3xl);
+}
+
+.page__lead {
+  margin-top: var(--space-md);
+  color: var(--color-text-muted);
+}
+
+.page__section-title {
+  margin-top: var(--space-3xl);
+  margin-bottom: var(--space-sm);
+}
+
+/* Grids */
+.page-grid {
+  display: grid;
+  gap: var(--space-xl);
+  align-items: start;
+}
+
+.page-grid--2 {
+  grid-template-columns: 2fr 1fr;
+}
+
+.page-grid--3 {
+  grid-template-columns: var(--sidebar-instructions) 1fr var(--sidebar-controls);
+}
+
+.page-grid--registers {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  margin-top: var(--space-xl);
+}
+
+/* Flex stacks */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.stack--sm {
+  gap: var(--space-sm);
+}
+
+.stack--lg {
+  gap: 0.9rem;
+}
+
+.stack--row {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.stack--end {
+  justify-content: flex-end;
+}
+
+.stack--row .sim-button {
+  width: auto;
+  margin-top: var(--space-md);
+}
+
+.instruction-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  width: var(--instruction-panel-width);
+  padding: var(--space-md);
+}
+
+.sim-button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
