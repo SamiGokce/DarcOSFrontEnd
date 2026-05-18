@@ -6,7 +6,7 @@ export default function MemoryConsole() {
   const [memory] = useState(new Array(16).fill(0n));
 
   return (
-    <div className="page page--compact">
+    <div className="page page--compact fade-in">
       <h1 className="page__title">Memory & Console</h1>
 
       <div className="console">

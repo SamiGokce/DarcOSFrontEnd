@@ -14,7 +14,7 @@ export default function SimStep() {
   };
 
   return (
-    <div className="page">
+    <div className="page fade-in">
       <h1 className="page__title">Instruction Stepping</h1>
       <p className="page__lead">
         Load or edit machine code instructions, then step through execution.

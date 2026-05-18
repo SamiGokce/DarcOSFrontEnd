@@ -1,22 +1,42 @@
 import { useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
 
-const InstructionButton = ({ instruction, index }) => {
-  const [, drag] = useDrag(() => ({
+const InstructionItem = ({ instruction, index }) => {
+  const [{ isDragging }, drag] = useDrag(() => ({
     type: "instruction",
     item: { index },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
   }));
 
   return (
-    <button
+    <li
       ref={drag}
-      type="button"
-      className="instruction-button instruction-button--drag"
+      className={`sidebar-list__row sidebar-list__row--draggable${isDragging ? " is-dragging" : ""}`}
     >
-      {instruction}
-    </button>
+      <span className="sidebar-list__grip" aria-hidden="true" />
+      <span className="sidebar-list__label sidebar-list__label--mono">{instruction}</span>
+    </li>
   );
 };
+
+const ControlItem = ({ label, onClick }) => (
+  <li
+    className="sidebar-list__row sidebar-list__row--action"
+    onClick={onClick}
+    onKeyDown={(e) => {
+      if (onClick && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        onClick();
+      }
+    }}
+    tabIndex={onClick ? 0 : undefined}
+    role={onClick ? "menuitem" : undefined}
+  >
+    <span className="sidebar-list__label">{label}</span>
+  </li>
+);
 
 export default function Canvas() {
   const [instructions] = useState(["ADD", "ADDI", "NOP", "HALT"]);
@@ -33,62 +53,59 @@ export default function Canvas() {
     console.log("Loaded program:", program);
   };
 
+  const controls = [
+    { id: "compile", label: "Compile & Load", onClick: load },
+    { id: "step", label: "Step" },
+    { id: "reset", label: "Reset" },
+    { id: "save", label: "Save Program" },
+    { id: "load-program", label: "Load Program" },
+    { id: "clear", label: "Clear Saved" },
+    { id: "export", label: "Export JSON" },
+  ];
+
   return (
-    <div className="page page--compact">
-      <div className="page-grid page-grid--3">
-        <section>
-          <h2 className="glass-panel__title">Instructions</h2>
-          <div className="instruction-group">
+    <div className="page page--canvas fade-in">
+      <div className="canvas-layout">
+        <aside className="sidebar sidebar--left sidebar--fit glass glass-panel">
+          <h2 className="sidebar__title">Instructions</h2>
+          <ul className="sidebar-list">
             {instructions.map((instruction, index) => (
-              <InstructionButton
+              <InstructionItem
                 key={`${instruction}-${index}`}
                 index={index}
                 instruction={instruction}
               />
             ))}
-          </div>
-        </section>
+          </ul>
+        </aside>
 
-        <section ref={drop} className="glass glass-panel glass-panel--wide">
-          <h2 className="glass-panel__title glass-panel__title--spaced">Program</h2>
-          <div className="drop-zone">
+        <main
+          ref={drop}
+          className="canvas-main glass glass-panel glass-panel--wide"
+        >
+          <h2 className="sidebar__title">Program</h2>
+          <div className="drop-zone drop-zone--canvas">
             {program.length === 0 ? (
-              "Drag Instructions Here"
+              <p className="drop-zone__placeholder">Drag instructions here</p>
             ) : (
-              <div>{program.join(", ")}</div>
+              <p className="program-list">{program.join(", ")}</p>
             )}
           </div>
-        </section>
+        </main>
 
-        <aside>
-          <div className="sim-button-group">
-            <button type="button" className="sim-button" onClick={load}>
-              Compile & Load
-            </button>
-            <button type="button" className="sim-button">
-              Step
-            </button>
-            <button type="button" className="sim-button">
-              Reset
-            </button>
-            <button type="button" className="sim-button">
-              Save Program
-            </button>
-            <button type="button" className="sim-button">
-              Load Program
-            </button>
-            <button type="button" className="sim-button">
-              Clear Saved
-            </button>
-            <button type="button" className="sim-button">
-              Export JSON
-            </button>
-          </div>
-
-          <label htmlFor="file-upload" className="file-upload file-upload--spaced">
-            Choose File
-          </label>
-          <input id="file-upload" type="file" />
+        <aside className="sidebar sidebar--right sidebar--fit glass glass-panel">
+          <h2 className="sidebar__title">Controls</h2>
+          <ul className="sidebar-list">
+            {controls.map(({ id, label, onClick }) => (
+              <ControlItem key={id} label={label} onClick={onClick} />
+            ))}
+            <li className="sidebar-list__row sidebar-list__row--action">
+              <label htmlFor="file-upload" className="sidebar-list__label">
+                Choose File
+              </label>
+              <input id="file-upload" type="file" />
+            </li>
+          </ul>
         </aside>
       </div>
     </div>

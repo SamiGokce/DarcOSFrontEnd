@@ -46,6 +46,66 @@
   grid-template-columns: var(--sidebar-instructions) 1fr var(--sidebar-controls);
 }
 
+/* Canvas: instructions (left) | program (center) | controls (right) */
+.page--canvas {
+  padding: var(--space-md) var(--space-md) var(--space-xl);
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.canvas-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr) minmax(0, 240px);
+  gap: var(--space-md);
+  align-items: start;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.canvas-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+}
+
+.canvas-main.glass-panel--wide {
+  padding: var(--space-md);
+}
+
+.sidebar {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.sidebar--fit {
+  align-self: start;
+  height: auto;
+  overflow: visible;
+}
+
+.sidebar__title {
+  flex-shrink: 0;
+  margin: 0 0 var(--space-xs);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-tight);
+}
+
+.sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
 .page-grid--registers {
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   margin-top: var(--space-xl);

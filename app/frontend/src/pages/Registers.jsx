@@ -17,7 +17,7 @@ export default function Registers() {
   }, [registers]);
 
   return (
-    <div className="page">
+    <div className="page fade-in">
       <h1 className="page__title">CPU Registers</h1>
       <p className="page__lead">
         Live view of current register values — changes flash green.
