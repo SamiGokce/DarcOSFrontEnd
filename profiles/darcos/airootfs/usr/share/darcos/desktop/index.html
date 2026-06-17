@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DarcOS Desktop</title>
+<style>
+  :root{
+    --bg:#1a0f0a; --bg2:#2a160e; --acrylic:rgba(28,16,11,.66); --acrylic2:rgba(40,22,15,.82);
+    --line:rgba(255,180,140,.16); --accent:#ff7a4d; --glow:#ff5a3c; --glow2:#ffb27a;
+    --text:#f3d9c8; --dim:#b89a8c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;font-family:"Segoe UI","Helvetica Neue",Inter,Arial,sans-serif;
+    color:var(--text);-webkit-font-smoothing:antialiased;user-select:none}
+  #wall{position:fixed;inset:0;
+    background:radial-gradient(120% 90% at 50% 30%,var(--bg2),var(--bg) 75%);}
+  #wall::after{content:"";position:fixed;inset:0;
+    background:radial-gradient(50% 38% at 50% 34%,color-mix(in srgb,var(--glow) 16%,transparent),transparent 70%);}
+
+  /* desktop icons */
+  #icons{position:fixed;top:24px;left:24px;display:flex;flex-direction:column;gap:22px}
+  .dicon{width:84px;text-align:center;cursor:pointer;font-size:12px;color:var(--text)}
+  .dicon .g{width:46px;height:46px;margin:0 auto 6px;border-radius:12px;display:flex;align-items:center;
+    justify-content:center;font-size:23px;background:var(--acrylic);border:1px solid var(--line)}
+  .dicon:hover .g{border-color:var(--accent)}
+
+  /* windows */
+  .win{position:fixed;min-width:340px;min-height:220px;background:var(--acrylic2);backdrop-filter:blur(26px);
+    border:1px solid var(--line);border-radius:11px;box-shadow:0 24px 70px rgba(0,0,0,.55);
+    display:flex;flex-direction:column;overflow:hidden}
+  .win .bar{height:38px;display:flex;align-items:center;padding:0 6px 0 14px;cursor:grab;
+    border-bottom:1px solid var(--line);font-size:13px}
+  .win .bar .ttl{display:flex;align-items:center;gap:8px;font-weight:600}
+  .win .bar .ctl{margin-left:auto;display:flex}
+  .win .bar .ctl button{width:42px;height:30px;border:0;background:transparent;color:var(--text);
+    font-size:14px;cursor:pointer;border-radius:6px}
+  .win .bar .ctl button:hover{background:rgba(255,255,255,.08)}
+  .win .bar .ctl button.x:hover{background:#e81123;color:#fff}
+  .win .body{flex:1;overflow:auto;padding:16px 18px;font-size:13.5px;line-height:1.55}
+
+  /* taskbar (Windows 11/12 — centered, acrylic, rounded) */
+  #taskbar{position:fixed;left:50%;transform:translateX(-50%);bottom:9px;height:52px;
+    display:flex;align-items:center;gap:5px;padding:0 9px;background:var(--acrylic);backdrop-filter:blur(30px);
+    border:1px solid var(--line);border-radius:15px;box-shadow:0 10px 34px rgba(0,0,0,.45);z-index:9000}
+  .tb{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-size:20px;cursor:pointer;position:relative;color:var(--text);transition:.13s}
+  .tb:hover{background:rgba(255,255,255,.09)}
+  .tb.run::after{content:"";position:absolute;bottom:3px;left:50%;transform:translateX(-50%);
+    width:6px;height:3px;border-radius:3px;background:var(--accent)}
+  /* The agent: a soft white wavy presence (OS1 / 'Her'), not a colored ball. */
+  .tb.agent{width:34px;height:34px;
+    background:radial-gradient(circle at 48% 42%, #ffffff, #ffffff 55%, rgba(255,255,255,.85) 80%);
+    box-shadow:0 0 16px 4px rgba(255,255,255,.55), 0 0 30px 8px color-mix(in srgb,var(--glow) 30%,transparent);
+    border-radius:60% 40% 35% 65% / 55% 35% 65% 45%;
+    animation:morph 7s ease-in-out infinite, breathe 3.4s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+  @keyframes morph{
+    0%,100%{border-radius:60% 40% 35% 65% / 55% 35% 65% 45%}
+    33%{border-radius:40% 60% 65% 35% / 45% 60% 40% 55%}
+    66%{border-radius:50% 50% 45% 55% / 60% 45% 55% 40%}}
+  .sep{width:1px;height:26px;background:var(--line);margin:0 4px}
+  #clock{padding:0 12px;text-align:right;font-size:11.5px;line-height:1.25;cursor:default}
+
+  /* start menu */
+  #start{position:fixed;left:50%;transform:translateX(-50%);bottom:72px;width:540px;max-width:92vw;
+    background:var(--acrylic2);backdrop-filter:blur(34px);border:1px solid var(--line);border-radius:15px;
+    box-shadow:0 26px 70px rgba(0,0,0,.55);padding:20px;z-index:9001;display:none}
+  #start.on{display:block;animation:pop .18s ease}
+  @keyframes pop{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%)}}
+  #start .search{width:100%;padding:11px 16px;border-radius:10px;border:1px solid var(--line);
+    background:rgba(0,0,0,.25);color:var(--text);font-size:14px;margin-bottom:18px;outline:none}
+  #start .lbl{font-size:12px;color:var(--dim);margin:4px 2px 12px}
+  .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .app{display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 6px;border-radius:10px;
+    cursor:pointer;font-size:12px;text-align:center}
+  .app:hover{background:rgba(255,255,255,.08)}
+  .app .g{font-size:24px}
+  #start .pwr{display:flex;align-items:center;justify-content:space-between;margin-top:18px;
+    padding-top:14px;border-top:1px solid var(--line)}
+  #start .me{display:flex;align-items:center;gap:10px;font-size:13.5px}
+  #start .me .o{width:30px;height:30px;background:#fff;
+    box-shadow:0 0 12px 3px rgba(255,255,255,.5);
+    border-radius:60% 40% 35% 65% / 55% 35% 65% 45%;animation:morph 7s ease-in-out infinite}
+
+  .terminal{font-family:"Cascadia Code",Consolas,monospace;font-size:13px;background:rgba(0,0,0,.35);
+    border-radius:8px;padding:14px;height:100%;white-space:pre-wrap}
+  .agentchat .msg{margin:8px 0}.agentchat .a{color:var(--glow2)}
+  .agentchat input{width:100%;margin-top:12px;padding:10px 14px;border-radius:9px;border:1px solid var(--line);
+    background:rgba(0,0,0,.25);color:var(--text);font-size:13.5px;outline:none}
+  .setrow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+  .toggle{display:flex;gap:8px}.toggle button{padding:7px 14px;border-radius:8px;border:1px solid var(--line);
+    background:transparent;color:var(--text);cursor:pointer}.toggle button.sel{background:var(--accent);color:#1a0d08;border-color:var(--accent)}
+</style>
+</head>
+<body>
+  <div id="wall"></div>
+
+  <div id="icons">
+    <div class="dicon" onclick="openApp('welcome')"><div class="g">◈</div>Get Started</div>
+    <div class="dicon" onclick="openApp('files')"><div class="g">📁</div>Files</div>
+    <div class="dicon" onclick="openApp('agent')"><div class="g">✦</div>Agent</div>
+  </div>
+
+  <!-- taskbar -->
+  <div id="taskbar">
+    <div class="tb" title="Start" onclick="toggleStart()">⊞</div>
+    <div class="sep"></div>
+    <div class="tb" data-app="files"  title="Files"    onclick="openApp('files')">📁</div>
+    <div class="tb" data-app="terminal" title="Terminal" onclick="openApp('terminal')">▢</div>
+    <div class="tb" data-app="browser" title="Browser"  onclick="openApp('browser')">🌐</div>
+    <div class="tb" data-app="settings" title="Settings" onclick="openApp('settings')">⚙</div>
+    <div class="sep"></div>
+    <div class="tb agent" data-app="agent" title="Talk to your agent" onclick="openApp('agent')"></div>
+    <div class="sep"></div>
+    <div id="clock"><div id="t">--:--</div><div id="d"></div></div>
+  </div>
+
+  <!-- start menu -->
+  <div id="start">
+    <input class="search" placeholder="Search apps, files, or ask your agent…" />
+    <div class="lbl">Pinned</div>
+    <div class="grid" id="pinned"></div>
+    <div class="pwr">
+      <div class="me"><div class="o"></div><span id="meName">Samantha · ready</span></div>
+      <div class="tb" title="Power" onclick="alert('Restart / Shut down')">⏻</div>
+    </div>
+  </div>
+
+  <script>
+  // DarcOS desktop — a Windows-12-style webtop rendered in the kiosk. The agent
+  // (orb in the taskbar, "ready" in Start) is always present; clicking it opens
+  // a chat that, in the live system, talks to darcos-agentd.
+  const params=new URLSearchParams(location.search);
+  const THEMES={
+    warm:{bg:'#1a0f0a',bg2:'#2a160e',accent:'#ff7a4d',glow:'#ff5a3c',glow2:'#ffb27a',text:'#f3d9c8',dim:'#b89a8c',line:'rgba(255,180,140,.16)'},
+    cool:{bg:'#120e1f',bg2:'#1d1633',accent:'#8a6cff',glow:'#8a6cff',glow2:'#c89bff',text:'#e4dcf3',dim:'#9a8fc0',line:'rgba(180,160,255,.18)'},
+  };
+  function applyTheme(name){const t=THEMES[name]||THEMES.warm,r=document.documentElement.style;
+    r.setProperty('--bg',t.bg);r.setProperty('--bg2',t.bg2);r.setProperty('--accent',t.accent);
+    r.setProperty('--glow',t.glow);r.setProperty('--glow2',t.glow2);r.setProperty('--text',t.text);
+    r.setProperty('--dim',t.dim);r.setProperty('--line',t.line);
+    r.setProperty('--acrylic',name==='cool'?'rgba(20,14,32,.66)':'rgba(28,16,11,.66)');
+    r.setProperty('--acrylic2',name==='cool'?'rgba(28,20,46,.82)':'rgba(40,22,15,.82)');}
+  let theme=(params.get('theme') in THEMES)?params.get('theme'):'warm'; applyTheme(theme);
+
+  // ---- apps ----
+  const APPS={
+    welcome:{name:'Get Started',icon:'◈',w:520,h:340,html:()=>`
+      <h2 style="margin-bottom:8px">Welcome to DarcOS</h2>
+      <p style="color:var(--dim)">Your computer, with an agent that's always with you.</p>
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button class="t1" onclick="openApp('agent')" style="padding:10px 18px;border:0;border-radius:9px;background:var(--accent);color:#1a0d08;cursor:pointer">Talk to your agent</button>
+        <button onclick="openApp('settings')" style="padding:10px 18px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);cursor:pointer">Personalize</button>
+      </div>`},
+    files:{name:'File Explorer',icon:'📁',w:560,h:380,html:()=>`
+      <div style="display:flex;gap:16px;height:100%">
+        <div style="width:150px;color:var(--dim)">
+          <div style="padding:6px 0">⬢ This PC</div><div style="padding:6px 0">📄 Documents</div>
+          <div style="padding:6px 0">🖼 Pictures</div><div style="padding:6px 0">🎵 Music</div>
+          <div style="padding:6px 0;color:var(--glow2)">✦ Soul (agent memory)</div></div>
+        <div style="flex:1;border-left:1px solid var(--line);padding-left:16px">
+          <p style="color:var(--dim);margin-bottom:10px">This PC ›</p>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+            ${['Documents','Pictures','Music','Downloads','Desktop','Soul'].map(f=>`<div style="text-align:center"><div style="font-size:30px">📁</div><small>${f}</small></div>`).join('')}
+          </div></div></div>`},
+    terminal:{name:'Terminal',icon:'▢',w:560,h:320,html:()=>`<div class="terminal">DarcOS $ <span style="opacity:.7">darcos agent "what can you do?"</span>
+<span style="color:var(--glow2)">Samantha ·</span> I can run anything on this machine for you — open apps,
+manage files, install software, and act on the desktop. Just ask.
+DarcOS $ <span class="cur">▋</span></div>`},
+    browser:{name:'Browser',icon:'🌐',w:600,h:400,html:()=>`<p style="color:var(--dim)">A web view would render here.</p>`},
+    agent:{name:'Agent',icon:'✦',w:440,h:420,html:()=>`<div class="agentchat" id="chat">
+      <div class="msg a"><b>Samantha</b> · I'm here. What are we doing?</div></div>
+      <input id="chatin" placeholder="Ask me anything…" onkeydown="if(event.key==='Enter')sendChat()">`},
+    settings:{name:'Settings',icon:'⚙',w:500,h:360,html:()=>`
+      <h3 style="margin-bottom:12px">Personalization</h3>
+      <div class="setrow"><span>Color mode</span><div class="toggle">
+        <button id="bw" class="${theme==='warm'?'sel':''}" onclick="setTheme('warm')">Warm (Her)</button>
+        <button id="bc" class="${theme==='cool'?'sel':''}" onclick="setTheme('cool')">Cool</button></div></div>
+      <div class="setrow"><span>Agent personality</span><span style="color:var(--dim)" id="perName">Samantha</span></div>
+      <div class="setrow"><span>Taskbar</span><span style="color:var(--dim)">Centered</span></div>
+      <div class="setrow"><span>Effects</span><span style="color:var(--dim)">Mica · rounded · blur</span></div>`},
+  };
+
+  // pinned grid in start
+  const pinned=document.getElementById('pinned');
+  Object.entries(APPS).forEach(([id,a])=>{const e=document.createElement('div');e.className='app';
+    e.innerHTML=`<div class="g">${a.icon}</div>${a.name}`;e.onclick=()=>{openApp(id);toggleStart(false)};pinned.appendChild(e)});
+
+  // ---- window manager ----
+  let z=10; const open={};
+  function openApp(id){
+    if(open[id]){ const w=open[id]; w.style.display='flex'; w.style.zIndex=++z; return; }
+    const a=APPS[id]; if(!a) return;
+    const w=document.createElement('div'); w.className='win';
+    w.style.width=a.w+'px'; w.style.height=a.h+'px'; w.style.zIndex=++z;
+    w.style.left=(90+Object.keys(open).length*28)+'px'; w.style.top=(70+Object.keys(open).length*26)+'px';
+    w.innerHTML=`<div class="bar"><div class="ttl">${a.icon} ${a.name}</div>
+      <div class="ctl"><button onclick="this.closest('.win').style.display='none'">▁</button>
+      <button onclick="maxi(this)">▢</button><button class="x" onclick="closeApp('${id}')">✕</button></div></div>
+      <div class="body">${a.html()}</div>`;
+    document.body.appendChild(w); open[id]=w; drag(w); mark();
+  }
+  function closeApp(id){ if(open[id]){open[id].remove(); delete open[id]; mark();} }
+  function maxi(b){const w=b.closest('.win');
+    if(w.dataset.max){w.style.inset='';w.style.width=w.dataset.w;w.style.height=w.dataset.h;w.style.left=w.dataset.l;w.style.top=w.dataset.t;w.style.borderRadius='11px';delete w.dataset.max;}
+    else{w.dataset.w=w.style.width;w.dataset.h=w.style.height;w.dataset.l=w.style.left;w.dataset.t=w.style.top;w.dataset.max=1;w.style.left='8px';w.style.top='8px';w.style.width='calc(100vw - 16px)';w.style.height='calc(100vh - 78px)';w.style.borderRadius='11px';}}
+  function mark(){document.querySelectorAll('.tb[data-app]').forEach(t=>t.classList.toggle('run',!!open[t.dataset.app]));}
+  function drag(w){const bar=w.querySelector('.bar');let sx,sy,ox,oy,on=false;
+    bar.onmousedown=e=>{if(e.target.tagName==='BUTTON')return;on=true;w.style.zIndex=++z;sx=e.clientX;sy=e.clientY;ox=w.offsetLeft;oy=w.offsetTop;bar.style.cursor='grabbing'};
+    document.addEventListener('mousemove',e=>{if(!on)return;w.style.left=(ox+e.clientX-sx)+'px';w.style.top=(oy+e.clientY-sy)+'px'});
+    document.addEventListener('mouseup',()=>{on=false;bar.style.cursor='grab'});}
+
+  async function sendChat(){const i=document.getElementById('chatin'),c=document.getElementById('chat');
+    const v=i.value.trim();if(!v)return; i.value='';
+    c.innerHTML+=`<div class="msg"><b>You</b> · ${v}</div>`; c.scrollTop=c.scrollHeight;
+    try{
+      // Real path: the bridge runs this through darcos-agentd on the actual system.
+      const r=await fetch('/api/agent',{method:'POST',body:JSON.stringify({text:v})});
+      const {events}=await r.json();
+      for(const e of events){
+        if(e.type==='narration') c.innerHTML+=`<div class="msg a"><b>${e.speaker||'Agent'}</b> ${e.cue||'·'} ${e.text}</div>`;
+        else if(e.type==='result') c.innerHTML+=`<div class="msg"><pre style="white-space:pre-wrap;color:var(--dim)">${e.output}</pre></div>`;
+        else if(e.type==='blocked') c.innerHTML+=`<div class="msg a">⊘ ${e.reason}</div>`;
+      }
+    }catch(err){
+      // Preview fallback (no bridge): simulate.
+      c.innerHTML+=`<div class="msg a"><b>Samantha</b> · On it — (preview mode; in the live system this runs through darcos-agentd).</div>`;
+    }
+    c.scrollTop=c.scrollHeight;}
+
+  function setTheme(t){theme=t;applyTheme(t);
+    document.getElementById('bw')?.classList.toggle('sel',t==='warm');
+    document.getElementById('bc')?.classList.toggle('sel',t==='cool');}
+
+  // start menu + clock
+  function toggleStart(force){const s=document.getElementById('start');
+    s.classList.toggle('on',force===undefined?!s.classList.contains('on'):force);}
+  document.addEventListener('click',e=>{const s=document.getElementById('start');
+    if(s.classList.contains('on')&&!s.contains(e.target)&&!e.target.closest('[onclick*=toggleStart]'))s.classList.remove('on');});
+  function tick(){const n=new Date();
+    document.getElementById('t').textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('d').textContent=n.toLocaleDateString([],{month:'short',day:'numeric'});}
+  setInterval(tick,1000);tick();
+
+  // First boot (live ISO): open the install/welcome hub on top of the desktop.
+  if(params.get('firstrun')) setTimeout(()=>openApp('welcome'), 400);
+  </script>
+</body>
+</html>

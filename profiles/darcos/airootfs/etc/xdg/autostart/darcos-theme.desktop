@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DarcOS Theme
+Comment=Apply the DarcOS OS1 color mode to the desktop
+Exec=/usr/local/lib/darcos/apply-theme.sh
+OnlyShowIn=GNOME;KDE;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

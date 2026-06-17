@@ -1,0 +1,121 @@
+# DarcOS base live environment packages
+
+# Boot & firmware
+archinstall
+efibootmgr
+grub
+intel-ucode
+amd-ucode
+mkinitcpio
+mkinitcpio-archiso
+syslinux
+
+# Core system
+base
+base-devel
+linux
+linux-firmware
+linux-headers
+networkmanager
+openssh
+sudo
+systemd
+systemd-sysvcompat
+
+# Filesystem & storage
+btrfs-progs
+cryptsetup
+dosfstools
+e2fsprogs
+f2fs-tools
+lvm2
+ntfs-3g
+parted
+xfsprogs
+
+# Shell & CLI essentials
+bash
+bash-completion
+bzip2
+coreutils
+curl
+diffutils
+findutils
+gawk
+git
+grep
+gzip
+htop
+less
+man-db
+man-pages
+nano
+neovim
+openbsd-netcat
+pacman-contrib
+pciutils
+procps-ng
+rsync
+sed
+tar
+tree
+unzip
+usbutils
+util-linux
+wget
+which
+xz
+zip
+zsh
+
+# Hardware detection
+dmidecode
+hwinfo
+lshw
+
+# Networking
+bind
+dhcpcd
+dnsmasq
+ethtool
+iwd
+iptables-nft
+iproute2
+iputils
+ldns
+nftables
+nmap
+openresolv
+traceroute
+whois
+wpa_supplicant
+
+# Live session UX
+dialog
+gum
+reflector
+terminus-font
+ttf-dejavu
+ttf-liberation
+
+# Native desktop (the default DarcOS shell: KDE Plasma, skinned as Windows 12)
+plasma-desktop
+sddm
+dolphin
+konsole
+kde-cli-tools
+xdg-desktop-portal-kde
+
+# Native boot splash + theming + audio
+plymouth
+jq
+pipewire
+pipewire-pulse
+wireplumber
+
+# Browser (a native app) + media + agent deps
+chromium
+ffmpeg
+ca-certificates
+ripgrep
+jack2

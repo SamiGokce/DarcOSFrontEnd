@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=DarcOS
+Description=DarcOS OS1 boot splash — a soft white presence on warm dark
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/darcos
+ScriptFile=/usr/share/plymouth/themes/darcos/darcos.script

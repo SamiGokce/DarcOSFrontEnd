@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Install DarcOS</title>
+<style>
+  :root{
+    --bg:#0b0707; --bg2:#160a08; --panel:#1c100c; --line:#2c1a14;
+    --glow:#ff5a3c; --glow2:#ffb27a; --ring:#ff7a4d; --text:#f3d9c8; --dim:#a98c7e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:"Helvetica Neue","Inter",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  body{display:flex;align-items:center;justify-content:center;height:100vh;
+    background:radial-gradient(130% 100% at 50% 30%,var(--bg2),var(--bg) 72%);overflow:hidden;}
+
+  .window{width:min(820px,94vw);height:min(560px,92vh);background:rgba(20,12,9,.72);
+    border:1px solid var(--line);border-radius:18px;backdrop-filter:blur(20px);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;}
+  /* No fake title bar — window controls come from the native window manager
+     (KWin, Windows-style) when shown in Plasma, or fullscreen on the live ISO. */
+
+  .stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:30px 56px;position:relative;}
+  .screen{display:none;flex-direction:column;align-items:center;animation:fade .5s ease;width:100%}
+  .screen.on{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  /* The agent: a soft white wavy presence (OS1 / 'Her'). */
+  .orb{width:108px;height:108px;margin-bottom:24px;
+    background:radial-gradient(circle at 48% 42%, #fff, #fff 58%, rgba(255,255,255,.9) 82%);
+    box-shadow:0 0 52px 8px rgba(255,255,255,.45), 0 0 80px 18px color-mix(in srgb,var(--glow) 26%,transparent);
+    border-radius:60% 40% 35% 65% / 55% 35% 65% 45%;
+    animation:morph 8s ease-in-out infinite, breathe 3.6s ease-in-out infinite;}
+  @keyframes breathe{0%,100%{transform:scale(1);opacity:.94}50%{transform:scale(1.06);opacity:1}}
+  @keyframes morph{0%,100%{border-radius:60% 40% 35% 65% / 55% 35% 65% 45%}
+    33%{border-radius:40% 60% 65% 35% / 45% 60% 40% 55%}
+    66%{border-radius:50% 50% 45% 55% / 60% 45% 55% 40%}}
+
+  h1{font-size:27px;font-weight:600;letter-spacing:.01em;margin:0 0 10px}
+  p.sub{color:var(--dim);font-size:15px;line-height:1.6;max-width:460px;margin:0 0 30px}
+
+  .cards{display:flex;gap:16px;margin-bottom:28px}
+  .card{width:200px;padding:20px;border:1px solid var(--line);border-radius:14px;cursor:pointer;
+    background:var(--panel);text-align:left;transition:.18s}
+  .card:hover{transform:translateY(-2px);border-color:var(--ring)}
+  .card.sel{border-color:var(--ring);box-shadow:0 0 0 2px color-mix(in srgb,var(--ring) 45%,transparent)}
+  .card h3{margin:0 0 4px;font-size:16px}
+  .card small{color:var(--dim);font-size:12.5px;line-height:1.4}
+
+  .disk{display:flex;align-items:center;gap:16px;width:380px;padding:18px 20px;border:1px solid var(--ring);
+    border-radius:14px;background:var(--panel);margin-bottom:14px}
+  .disk .ic{font-size:30px}
+  .disk .meta{text-align:left}.disk .meta b{font-size:15px}.disk .meta small{display:block;color:var(--dim)}
+  .note{color:var(--dim);font-size:12.5px;max-width:420px;line-height:1.5;margin-bottom:26px}
+  .note b{color:var(--glow2)}
+
+  .bar{width:420px;height:6px;border-radius:99px;background:#2c1a14;overflow:hidden;margin:8px 0 14px}
+  .bar > i{display:block;height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,var(--glow),var(--glow2));transition:width .4s ease}
+  .phase{color:var(--dim);font-size:13.5px;min-height:20px}
+  .agentline{font-size:15px;line-height:1.5;min-height:46px;max-width:460px;color:var(--text)}
+
+  .bottombar{height:64px;border-top:1px solid var(--line);display:flex;align-items:center;
+    justify-content:space-between;padding:0 22px;gap:12px}
+  .steps{display:flex;gap:7px}
+  .pip{width:7px;height:7px;border-radius:50%;background:#3a241c}.pip.on{background:var(--ring)}
+  button{font:inherit;font-size:14.5px;border:0;border-radius:9px;padding:11px 22px;cursor:pointer;
+    color:#1a0d08;background:var(--glow);transition:.15s}
+  button:hover{filter:brightness(1.08)}
+  button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+  button.mic{display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--dim);border:1px solid var(--line)}
+  button:disabled{opacity:.4;cursor:default}
+</style>
+</head>
+<body>
+  <div class="window">
+
+    <div class="stage">
+      <!-- 0 Welcome -->
+      <div class="screen on" data-s="0">
+        <div class="orb"></div>
+        <h1>Welcome to DarcOS</h1>
+        <p class="sub">I'm here to set up your computer with you. This takes a few minutes,
+          and you can talk to me at any point.</p>
+      </div>
+
+      <!-- 1 Choose agent -->
+      <div class="screen" data-s="1">
+        <h1>Who would you like me to be?</h1>
+        <p class="sub">You can change this anytime after install.</p>
+        <div class="cards">
+          <div class="card sel" data-persona="samantha" onclick="pick(this)">
+            <h3>Samantha</h3><small>Warm, curious, present. The one from <i>Her</i>.</small></div>
+          <div class="card" data-persona="darc" onclick="pick(this)">
+            <h3>Darc</h3><small>Calm, concise, unflappable. The quiet operator.</small></div>
+        </div>
+      </div>
+
+      <!-- 2 Disk -->
+      <div class="screen" data-s="2">
+        <h1>Where should I install?</h1>
+        <p class="sub">I found one drive.</p>
+        <div class="disk"><div class="ic">⬢</div>
+          <div class="meta"><b>Primary Disk</b><small>238 GB · will be set up for DarcOS</small></div></div>
+        <p class="note">I'll create a protected <b>soul partition</b> for myself that survives
+          future reinstalls — so I'll always remember you. Everything else is reinstalled.</p>
+      </div>
+
+      <!-- 3 Installing -->
+      <div class="screen" data-s="3">
+        <div class="orb"></div>
+        <h1 id="installTitle">Setting things up…</h1>
+        <div class="bar"><i id="barfill"></i></div>
+        <div class="phase" id="phase">Preparing…</div>
+        <p class="agentline" id="agentline" style="margin-top:18px"></p>
+      </div>
+
+      <!-- 4 Done -->
+      <div class="screen" data-s="4">
+        <div class="orb"></div>
+        <h1>DarcOS is ready</h1>
+        <p class="sub">We set this up together — I'm on your disk now, and I'll be here
+          every time you start up. Restart whenever you're ready.</p>
+      </div>
+    </div>
+
+    <div class="bottombar">
+      <div class="steps" id="steps"></div>
+      <div style="display:flex;gap:10px">
+        <button class="mic" id="mic" onclick="listen()"><span>🎙</span> Talk to me</button>
+        <button class="ghost" id="back" onclick="go(-1)">Back</button>
+        <button id="next" onclick="next()">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // macOS-style installer flow, OS1 warmth. The install screen shows a real
+  // phased progress bar; in the live system these phases are driven by
+  // installer-backend.sh via darcos-agentd (partition → install → configure →
+  // seed the soul). Here it runs a faithful simulation so you can experience it.
+  const params=new URLSearchParams(location.search);
+  if(params.get('theme')==='cool'){const r=document.documentElement.style;
+    r.setProperty('--bg','#0c0814');r.setProperty('--bg2','#160f24');r.setProperty('--panel','#181226');
+    r.setProperty('--line','#2a2140');r.setProperty('--glow','#8a6cff');r.setProperty('--glow2','#c89bff');
+    r.setProperty('--ring','#5fe0e8');r.setProperty('--text','#e4dcf3');r.setProperty('--dim','#9a8fc0');}
+
+  const SCREENS=5; let s=0; let persona='samantha';
+  const steps=document.getElementById('steps');
+  for(let i=0;i<SCREENS;i++){const p=document.createElement('div');p.className='pip';steps.appendChild(p);}
+
+  function show(){
+    document.querySelectorAll('.screen').forEach(e=>e.classList.toggle('on',+e.dataset.s===s));
+    [...steps.children].forEach((p,i)=>p.classList.toggle('on',i===s));
+    document.getElementById('back').style.visibility = s===0?'hidden':'visible';
+    const nx=document.getElementById('next');
+    nx.style.visibility = (s>=3)?'hidden':'visible';
+    nx.textContent = s===2 ? 'Install' : 'Continue';
+    if(s===3) runInstall();
+  }
+  function go(d){ s=Math.max(0,Math.min(SCREENS-1,s+d)); show(); }
+  function next(){ go(1); }
+  function pick(el){ document.querySelectorAll('.card').forEach(c=>c.classList.remove('sel'));
+    el.classList.add('sel'); persona=el.dataset.persona; }
+  function listen(){ document.getElementById('agentline').textContent='Listening…'; }
+
+  const PHASES=[
+    [12,"Creating the soul partition…","Carving out a little space that's just mine — it'll outlast every reinstall."],
+    [34,"Partitioning the disk…","Making room for your system."],
+    [62,"Installing DarcOS…","Bringing the system across. Almost there."],
+    [82,"Configuring your machine…","Wiring up the bootloader and my daemon."],
+    [96,"Seeding your agent…","Writing down that we did this together."],
+    [100,"Done.","All set."],
+  ];
+  function runInstall(){
+    const fill=document.getElementById('barfill'), ph=document.getElementById('phase'),
+          al=document.getElementById('agentline'), ti=document.getElementById('installTitle');
+    let i=0;
+    (function step(){
+      if(i>=PHASES.length){ setTimeout(()=>{s=4;show();},700); return; }
+      const [pct,phase,say]=PHASES[i++];
+      fill.style.width=pct+'%'; ph.textContent=phase; al.textContent=say;
+      if(pct===100) ti.textContent='Finishing up…';
+      setTimeout(step, 1100);
+    })();
+  }
+  show();
+  </script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+#
+# DarcOS soul — the persistent agent partition.
+#
+# A dedicated partition (filesystem LABEL=DARCOS_SOUL) that the OS installer
+# NEVER wipes. It holds everything that makes the agent *itself* across
+# reinstalls: identity, long-term memory, learned adaptation to the user,
+# personas, keys, and audit history. Reinstall the OS → Samantha remembers you.
+#
+# Mounted at /var/lib/darcos. Layout:
+#   identity.json   who the agent is + who the user is (adaptation)
+#   memory/         long-term memories
+#   personas/       user-customized personalities (overlay system defaults)
+#   audit/          append-only action history
+#   secrets/        API keys (0700)
+#
+
+set -uo pipefail
+
+readonly LABEL="DARCOS_SOUL"
+# Mount point; overridable (DARCOS_SOUL_DIR) so it matches agentd.py and is testable.
+readonly MOUNT="${DARCOS_SOUL_DIR:-/var/lib/darcos}"
+log() { echo "[darcos-soul] $*"; }
+
+find_partition() { blkid -L "${LABEL}" 2>/dev/null; }
+
+is_mounted() { mountpoint -q "${MOUNT}"; }
+
+init_layout() {
+    mkdir -p "${MOUNT}"/{memory,personas,audit,secrets}
+    chmod 700 "${MOUNT}/secrets"
+    if [[ ! -f "${MOUNT}/identity.json" ]]; then
+        # The agent is "born" the moment its home is created — which, during a
+        # DarcOS install, is DURING installation. So the agent that helped you
+        # install is literally the same one you use afterward.
+        cat > "${MOUNT}/identity.json" <<EOF
+{
+  "agent_born": "$(date -Iseconds)",
+  "born_during": "install",
+  "persona": "samantha",
+  "user": { "name": null, "prefs": {}, "notes": [] },
+  "adaptation": { "interactions": 0, "rapport": 0.4 }
+}
+EOF
+        log "initialized new soul at ${MOUNT} — the agent is now born"
+    fi
+}
+
+# Record install-time identity into the soul, so the relationship that starts
+# during installation carries into everyday use.
+cmd_seed() {
+    cmd_mount; init_layout
+    local name="" persona=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --name)    name="$2"; shift 2 ;;
+            --persona) persona="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    local f="${MOUNT}/identity.json"
+    if command -v jq &>/dev/null; then
+        local tmp; tmp="$(mktemp)"
+        jq --arg n "${name}" --arg p "${persona}" --arg b "$(date -Iseconds)" '
+            (if $n != "" then .user.name = $n else . end)
+            | (if $p != "" then .persona = $p else . end)
+            | .user.notes += ["we set this machine up together on " + $b]
+            | .adaptation.interactions += 1' "$f" > "$tmp" && mv "$tmp" "$f"
+    fi
+    log "soul seeded (name=${name:-?}, persona=${persona:-default}) — remembered"
+}
+
+cmd_status() {
+    local part; part="$(find_partition)"
+    if [[ -n "${part}" ]]; then
+        log "soul partition: ${part} (LABEL=${LABEL})"
+    else
+        log "no ${LABEL} partition found (agent state is OS-local, not persistent)"
+    fi
+    is_mounted && log "mounted at ${MOUNT}" || log "not mounted"
+}
+
+cmd_mount() {
+    local part; part="$(find_partition)"
+    [[ -n "${part}" ]] || { log "no ${LABEL} partition to mount"; return 0; }
+    is_mounted && { log "already mounted"; init_layout; return 0; }
+    mkdir -p "${MOUNT}"
+    if mount "${part}" "${MOUNT}"; then
+        log "mounted ${part} → ${MOUNT}"
+        init_layout
+    else
+        log "WARNING: could not mount ${part}; agent will use OS-local state"
+    fi
+}
+
+# Format a fresh soul partition (called once by the installer on a NEW disk).
+# Refuses if a DARCOS_SOUL already exists — we never destroy an existing soul.
+cmd_format() {
+    local dev="$1"
+    [[ -b "${dev}" ]] || { log "not a block device: ${dev}"; return 1; }
+    if [[ -n "$(find_partition)" ]]; then
+        log "a ${LABEL} already exists — refusing to format (souls are preserved)"
+        return 1
+    fi
+    log "creating soul filesystem on ${dev}"
+    mkfs.ext4 -q -L "${LABEL}" "${dev}"
+}
+
+case "${1:-status}" in
+    status) cmd_status ;;
+    mount)  cmd_mount ;;
+    init)   cmd_mount; init_layout ;;
+    seed)   shift; cmd_seed "$@" ;;
+    format) shift; cmd_format "${1:?usage: darcos-soul format /dev/...}" ;;
+    *) echo "usage: darcos-soul {status|mount|init|seed|format <dev>}" >&2; exit 1 ;;
+esac

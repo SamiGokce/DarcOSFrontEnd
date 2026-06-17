@@ -1,0 +1,9 @@
+# mkinitcpio preset for the 'linux' package on the DarcOS live ISO.
+# Tells mkarchiso to build the live initramfs using the archiso config above.
+
+PRESETS=('archiso')
+
+ALL_kver='/boot/vmlinuz-linux'
+
+archiso_config='/etc/mkinitcpio.conf.d/archiso.conf'
+archiso_image="/boot/initramfs-linux.img"

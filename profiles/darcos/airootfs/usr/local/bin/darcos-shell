@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+#
+# DarcOS shell mode — choose how you interact with the embedded AI:
+#   voice  → no desktop; the AI agent (Hermes) is the interface (default)
+#   gnome  → GNOME desktop, AI embedded as a panel/overlay
+#   kde    → KDE Plasma desktop, AI embedded as a panel/overlay
+#
+# On the live ISO this records your preference. On an INSTALLED system it also
+# installs the desktop packages and enables the display manager.
+#
+
+set -euo pipefail
+
+readonly STATE="/etc/darcos/shell"
+readonly LOG_PREFIX="[darcos-shell]"
+log()  { echo "${LOG_PREFIX} $*"; }
+warn() { echo "${LOG_PREFIX} WARNING: $*" >&2; }
+
+current() { [[ -f "${STATE}" ]] && cat "${STATE}" || echo "voice"; }
+on_live() { [[ -f /run/archiso/bootmnt ]] || grep -qa 'archiso' /proc/cmdline 2>/dev/null; }
+
+# Desktop package groups + display manager per mode.
+# 'desktop' = the default DarcOS desktop: a LEAN KDE Plasma skinned as Windows 12.
+# Minimal on purpose — the file explorer (dolphin) + a terminal + the Win12 shell.
+# Everything else (office, creative, games) is added later by the user or by
+# telling the agent ("install gimp" → pkg.install). chromium (browser) ships in
+# the base image already.
+desktop_pkgs=(plasma-desktop sddm dolphin konsole kde-cli-tools)
+gnome_pkgs=(gnome gnome-tweaks gdm)
+kde_pkgs=(plasma-meta sddm konsole dolphin)
+
+usage() {
+    cat <<EOF
+darcos shell — how you interact with the embedded AI
+
+Usage:
+  darcos shell             Show the active shell mode
+  darcos shell voice       Voice / TUI only — the AI is the interface
+  darcos shell desktop     DarcOS desktop — Windows-12-style webtop (recommended)
+  darcos shell gnome       GNOME desktop (advanced)
+  darcos shell kde         KDE Plasma desktop (advanced)
+
+Active: $(current)
+
+Note: 'desktop' is the native DarcOS shell — a Windows-12-style webtop with the
+agent in the taskbar, rendered in a kiosk (no GNOME/KDE needed). gnome/kde are
+heavier alternatives (~1–2 GB) for users who want a full traditional DE. The AI
+agent is present in every mode.
+EOF
+}
+
+persist() {
+    local mode="$1"
+    if [[ "${EUID}" -eq 0 || -w "$(dirname "${STATE}")" ]]; then
+        echo "${mode}" > "${STATE}"
+    else
+        echo "${mode}" | sudo tee "${STATE}" >/dev/null
+    fi
+}
+
+install_desktop() {
+    local mode="$1"; shift
+    local -a pkgs=("$@") dm=""
+    case "${mode}" in
+        desktop) dm="sddm" ;;
+        gnome)   dm="gdm" ;;
+        kde)     dm="sddm" ;;
+    esac
+
+    if on_live; then
+        warn "live ISO detected — recording preference only."
+        warn "Desktop will be installed when you run 'darcos install'."
+        return 0
+    fi
+    if ! command -v pacman &>/dev/null; then
+        warn "pacman not found; cannot install ${mode} here."
+        return 1
+    fi
+
+    log "Installing ${mode} desktop (${pkgs[*]})..."
+    sudo pacman -S --needed --noconfirm "${pkgs[@]}"
+    log "Enabling display manager: ${dm}"
+    sudo systemctl enable "${dm}.service"
+    log "${mode} ready — reboot to start the desktop."
+}
+
+set_mode() {
+    local mode="$1"
+    case "${mode}" in
+        voice)
+            persist voice
+            log "Shell mode → voice. The AI agent is your interface."
+            log "Start it with: darcos ai"
+            ;;
+        desktop)
+            persist desktop
+            log "Shell mode → desktop: KDE Plasma, skinned as Windows 12."
+            install_desktop desktop "${desktop_pkgs[@]}"
+            log "The Windows-12 look applies on next Plasma login (darcos-plasma-win12)."
+            ;;
+        gnome) persist gnome; install_desktop gnome "${gnome_pkgs[@]}" ;;
+        kde)   persist kde;   install_desktop kde   "${kde_pkgs[@]}" ;;
+        *)
+            echo "Unknown shell mode: ${mode} (choose: voice desktop gnome kde)" >&2
+            exit 1
+            ;;
+    esac
+}
+
+case "${1:-}" in
+    ""|-h|--help|help|show) usage ;;
+    *) set_mode "$1" ;;
+esac

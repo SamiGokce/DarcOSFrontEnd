@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+#
+# DarcOS default AI session — launches Hermes Agent TUI.
+#
+
+set -euo pipefail
+
+if ! command -v hermes &>/dev/null; then
+    echo "Hermes Agent is not installed." >&2
+    echo "Run: sudo /usr/local/lib/darcos/install-hermes.sh" >&2
+    exit 1
+fi
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    cat <<'EOF'
+darcos-ai — DarcOS default AI agent (Hermes)
+
+Usage:
+  darcos ai            Start Hermes TUI (recommended)
+  darcos-ai              Same as above
+  darcos setup           Configure your LLM provider
+  darcos doctor          Diagnose Hermes installation
+
+Hermes docs: https://hermes-agent.nousresearch.com/docs
+EOF
+    exit 0
+fi
+
+case "${1:-}" in
+    --cli)   shift; exec hermes "$@" ;;
+    doctor)  shift; exec hermes doctor "$@" ;;
+    "")      exec hermes --tui ;;
+    *)       exec hermes --tui "$@" ;;
+esac

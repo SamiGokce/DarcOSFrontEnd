@@ -1,16 +1,77 @@
-# React + Vite
+DarcOS
+======
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A custom Arch Linux distribution built with archiso.
 
-Currently, two official plugins are available:
+DarcOS ships a minimal live environment with **Hermes Agent** as the default
+AI assistant — pre-installed on the ISO and ready after you run `darcos setup`
+to choose an LLM provider.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Quick start
+-----------
 
-## React Compiler
+**On Arch Linux:**
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+sudo pacman -S archiso
+make build
+```
 
-## Expanding the ESLint configuration
+**On Fedora / Ubuntu / other distros** (uses Docker or Podman + Arch container):
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+make build-container
+```
+
+Faster dev build without Hermes download:
+
+```bash
+bash scripts/build-container.sh --skip-hermes
+```
+
+Output lands in `out/`.
+
+On the live ISO
+---------------
+
+```bash
+darcos setup    # first run: configure LLM provider
+darcos ai       # start Hermes TUI (default)
+darcos doctor   # diagnose install issues
+```
+
+Hermes is installed system-wide to `/usr/local/lib/hermes-agent` with the
+`hermes` command in `/usr/local/bin`. New users receive a seeded config from
+`/etc/darcos/hermes-seed`.
+
+Project layout
+--------------
+
+```
+profiles/darcos/     archiso profile (packages, pacman, overlays)
+scripts/             build and Hermes install helpers
+config/branding/     logos and theme assets (add your own)
+src/__tests__/       profile validation tests
+```
+
+Customization
+-------------
+
+- **Packages**: edit `profiles/darcos/packages.x86_64`
+- **Hermes install**: `profiles/darcos/airootfs/usr/local/lib/darcos/install-hermes.sh`
+- **Default AI launcher**: `profiles/darcos/airootfs/usr/local/bin/darcos-ai`
+- **Live system files**: add overlays under `profiles/darcos/airootfs/`
+- **ISO metadata**: edit `profiles/darcos/profiledef.sh`
+
+Requirements
+------------
+
+- Arch Linux host (building archiso ISOs on other distros is unsupported)
+- Root privileges for `mkarchiso`
+- Network access during ISO build (for Hermes Agent download)
+- ~15 GB free disk space (Hermes + build artifacts)
+
+License
+-------
+
+MIT — customize freely.

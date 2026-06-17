@@ -1,0 +1,14 @@
+[Unit]
+Description=DarcOS — update Hermes Agent to the latest release
+Documentation=https://hermes-agent.nousresearch.com/docs
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/usr/local/lib/darcos/hermes-update.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/darcos/hermes-update.sh
+Nice=10
+IOSchedulingClass=idle
+# Let the update take its time on slow links, but never hang the system.
+TimeoutStartSec=900

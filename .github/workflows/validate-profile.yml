@@ -1,0 +1,34 @@
+name: Validate DarcOS Profile
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-profile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats shellcheck
+
+      - name: Validate profile structure
+        run: bash src/__tests__/validate-profile.sh
+
+      - name: Run bats regression suite
+        run: bats src/__tests__/profile.bats
+
+      - name: Shellcheck build scripts
+        run: |
+          shellcheck scripts/build.sh scripts/setup-dev.sh scripts/install-hermes.sh
+          shellcheck profiles/darcos/airootfs/usr/local/bin/darcos
+          shellcheck profiles/darcos/airootfs/usr/local/bin/darcos-install
+          shellcheck profiles/darcos/airootfs/usr/local/bin/darcos-ai
+          shellcheck profiles/darcos/airootfs/usr/local/lib/darcos/install-hermes.sh
+          shellcheck profiles/darcos/airootfs/root/.automated_script.sh
+          shellcheck profiles/darcos/airootfs/etc/profile.d/darcos-hermes.sh

@@ -1,0 +1,6 @@
+# DarcOS — Custom Arch Linux Distribution
+
+DARCOS_VERSION="0.2.0-dev"
+DARCOS_CODENAME="hermes"
+DARCOS_BASE="arch"
+DARCOS_DEFAULT_AI="hermes"

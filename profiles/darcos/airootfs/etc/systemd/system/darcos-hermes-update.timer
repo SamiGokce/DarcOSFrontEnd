@@ -1,0 +1,14 @@
+[Unit]
+Description=DarcOS — daily Hermes Agent auto-update
+Documentation=https://hermes-agent.nousresearch.com/docs
+
+[Timer]
+# Shortly after boot, then once a day. Persistent catches up if the machine
+# was off when the timer was due. Randomized delay spreads out load.
+OnBootSec=5min
+OnUnitActiveSec=1d
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

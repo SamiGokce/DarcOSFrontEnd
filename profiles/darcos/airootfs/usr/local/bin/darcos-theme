@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+#
+# DarcOS color mode — switch between 'warm' (OS1/Her) and 'cool' (purple/cyan).
+# The chosen mode is read by the boot helix, the TUI, and the desktop theme.
+#
+
+set -euo pipefail
+
+readonly STATE="/etc/darcos/theme"
+readonly MODES=("warm" "cool")
+
+current() { [[ -f "${STATE}" ]] && cat "${STATE}" || echo "warm"; }
+
+usage() {
+    cat <<EOF
+darcos theme — DarcOS color mode
+
+Usage:
+  darcos theme              Show the active color mode
+  darcos theme warm         OS1 warm palette (coral / peach / white — from 'Her')
+  darcos theme cool         DarcOS purple / cyan palette (warm-biased)
+
+Active: $(current)
+EOF
+}
+
+set_mode() {
+    local mode="$1"
+    if [[ ! " ${MODES[*]} " == *" ${mode} "* ]]; then
+        echo "Unknown mode: ${mode} (choose: ${MODES[*]})" >&2
+        exit 1
+    fi
+    if [[ -w "$(dirname "${STATE}")" || "${EUID}" -eq 0 ]]; then
+        echo "${mode}" > "${STATE}"
+    else
+        echo "${mode}" | sudo tee "${STATE}" >/dev/null
+    fi
+    echo "DarcOS color mode → ${mode}"
+
+    # If we're in a graphical session, repaint the desktop immediately.
+    if [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] && [[ -x /usr/local/lib/darcos/apply-theme.sh ]]; then
+        /usr/local/lib/darcos/apply-theme.sh || true
+    else
+        echo "(applies to the next boot splash; log into the desktop to repaint.)"
+    fi
+}
+
+case "${1:-}" in
+    ""|-h|--help|help|show) usage ;;
+    *) set_mode "$1" ;;
+esac

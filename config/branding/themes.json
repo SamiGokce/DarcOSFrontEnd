@@ -1,0 +1,28 @@
+{
+  "$comment": "DarcOS color modes — single source of truth. Read by the boot helix, the TUI, and (eventually) the GTK/KDE themes. Both modes are intentionally warm-biased so the system feels alive rather than clinical.",
+  "default": "warm",
+  "modes": {
+    "warm": {
+      "label": "OS1 — warm (from 'Her')",
+      "bg":      "#0b0707",
+      "bg2":     "#160a08",
+      "glowA":   "#ff5a3c",
+      "glowB":   "#ffb27a",
+      "glowC":   "#ffe6c4",
+      "ring":    "#ff7a4d",
+      "accent":  "#ff7a4d",
+      "text":    "#f3d9c8"
+    },
+    "cool": {
+      "label": "DarcOS — purple / cyan (warm-biased)",
+      "bg":      "#0c0814",
+      "bg2":     "#160f24",
+      "glowA":   "#8a6cff",
+      "glowB":   "#c89bff",
+      "glowC":   "#e8d6ff",
+      "ring":    "#5fe0e8",
+      "accent":  "#8a6cff",
+      "text":    "#e4dcf3"
+    }
+  }
+}

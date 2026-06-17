@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+#
+# DarcOS voice client — talk to (and install) the OS by voice.
+#
+# Loop:  🎤 capture → STT (hear) → `darcos agent` (think+act) → TTS (speak) 🔊
+#
+# Backends are pluggable via /etc/darcos/voice.conf:
+#   STT: whisper (local) | elevenlabs (Scribe)
+#   TTS: piper   (local) | elevenlabs
+#
+# Fail-safe: if a backend or key is missing it says so and exits 0, never hangs.
+#
+
+set -uo pipefail
+
+# shellcheck source=/dev/null
+[[ -f /etc/darcos/voice.conf ]] && source /etc/darcos/voice.conf
+STT_ENGINE="${STT_ENGINE:-whisper}"
+TTS_ENGINE="${TTS_ENGINE:-piper}"
+
+REC="/tmp/darcos-voice-in.wav"
+SAY="/tmp/darcos-voice-out.wav"
+
+have() { command -v "$1" &>/dev/null; }
+note() { echo "[darcos-voice] $*" >&2; }
+
+capture() {
+    # ~5s of mic audio (push-to-talk style). pipewire provides pw-record.
+    if   have pw-record; then timeout 6 pw-record --rate 16000 --channels 1 "${REC}" 2>/dev/null || true
+    elif have arecord;   then timeout 6 arecord -q -f S16_LE -r 16000 -c 1 "${REC}" || true
+    else note "no mic capture tool (pw-record/arecord)"; return 1
+    fi
+}
+
+stt() {   # prints recognized text
+    case "${STT_ENGINE}" in
+        whisper)
+            have whisper-cli || have whisper || { note "whisper not installed"; return 1; }
+            { whisper-cli -nt -otxt -f "${REC}" 2>/dev/null || whisper "${REC}" --output_format txt; } \
+                | tr -d '\r'
+            ;;
+        elevenlabs)
+            [[ -n "${ELEVENLABS_API_KEY:-}" ]] || { note "no ELEVENLABS_API_KEY"; return 1; }
+            curl -fsS -X POST "https://api.elevenlabs.io/v1/speech-to-text" \
+                -H "xi-api-key: ${ELEVENLABS_API_KEY}" \
+                -F model_id=scribe_v1 -F "file=@${REC}" \
+                | jq -r '.text // empty'
+            ;;
+    esac
+}
+
+speak() {  # $1 = text
+    local text="$1"
+    case "${TTS_ENGINE}" in
+        piper)
+            have piper || { note "piper not installed"; return 0; }
+            echo "${text}" | piper --model "${PIPER_MODEL:-en_US-amy-medium}" --output_file "${SAY}" 2>/dev/null \
+                && play_audio
+            ;;
+        elevenlabs)
+            [[ -n "${ELEVENLABS_API_KEY:-}" ]] || { note "no ELEVENLABS_API_KEY"; echo "${text}"; return 0; }
+            local vid="${ELEVENLABS_VOICE_ID:-21m00Tcm4TlvDq8ikWAM}"
+            curl -fsS -X POST "https://api.elevenlabs.io/v1/text-to-speech/${vid}" \
+                -H "xi-api-key: ${ELEVENLABS_API_KEY}" -H "Content-Type: application/json" \
+                -d "$(jq -nc --arg t "${text}" '{text:$t, model_id:"eleven_turbo_v2_5"}')" \
+                -o "${SAY}" && play_audio
+            ;;
+    esac
+}
+
+play_audio() {
+    if   have paplay; then paplay "${SAY}"
+    elif have ffplay; then ffplay -nodisp -autoexit -loglevel quiet "${SAY}"
+    fi
+}
+
+converse_once() {
+    capture || return 1
+    local heard; heard="$(stt)"; heard="$(echo "${heard}" | xargs)"
+    [[ -n "${heard}" ]] || { note "heard nothing"; return 0; }
+    echo "you ▸ ${heard}"
+    # Drive the always-on agent; speak each narration line it returns.
+    /usr/local/bin/darcos-agentd client "${heard}" | while IFS= read -r line; do
+        echo "${line}"
+        # Speak only the narration (lines the daemon marks with the persona dot).
+        [[ "${line}" == *"●"* || "${line}" == *"·"* || "${line}" == *"☼"* ]] \
+            && speak "$(echo "${line}" | sed 's/\x1b\[[0-9;]*m//g; s/^[^ ]* [^ ]* //')"
+    done
+}
+
+main() {
+    note "voice client — STT=${STT_ENGINE} TTS=${TTS_ENGINE}. Ctrl-C to stop."
+    speak "I'm here." 2>/dev/null || true
+    if [[ "${1:-}" == "--once" ]]; then converse_once; return; fi
+    while true; do converse_once || break; done
+}
+
+main "$@"

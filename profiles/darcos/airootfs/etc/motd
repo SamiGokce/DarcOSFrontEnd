@@ -1,0 +1,12 @@
+# DarcOS live environment — post-login message
+
+Welcome to DarcOS!
+
+  darcos setup         Configure your LLM provider (first run)
+  darcos ai            Start Hermes Agent (default AI assistant)
+  darcos-install     Guided DarcOS installer
+  archinstall        Upstream Arch guided installer
+  reflector          Refresh mirror list
+  nmtui              Network configuration
+
+Edit /etc/darcos-release for version info.

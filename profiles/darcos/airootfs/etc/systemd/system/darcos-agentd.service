@@ -1,0 +1,24 @@
+[Unit]
+Description=DarcOS agent daemon — the OS-as-harness brain (AI in charge)
+Documentation=https://github.com/codejedi_ai/DarcOSFrontEnd
+# The agent has full system reach, so it starts after the system is up — but it
+# is intentionally NOT a boot dependency. If it fails, the OS still boots and is
+# fully usable by hand (fail-safe).
+After=network-online.target systemd-user-sessions.service
+Wants=network-online.target
+ConditionPathExists=/usr/local/lib/darcos/agentd.py
+
+[Service]
+Type=simple
+# Runs as root: the AI is in charge of the OS. Its power is bounded by the
+# policy gate + audit log in agentd.py, not by a reduced Unix user.
+# Mount the persistent soul partition first (best-effort; '-' = don't block).
+ExecStartPre=-/usr/local/bin/darcos-soul mount
+ExecStart=/usr/local/bin/darcos-agentd serve
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=darcos
+LogsDirectory=darcos
+
+[Install]
+WantedBy=multi-user.target

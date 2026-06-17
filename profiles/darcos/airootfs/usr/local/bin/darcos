@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+#
+# DarcOS system CLI — installer, AI setup, and agent launcher.
+#
+
+set -euo pipefail
+
+require_hermes() {
+    if ! command -v hermes &>/dev/null; then
+        echo "Hermes Agent is not installed." >&2
+        echo "Run: sudo /usr/local/lib/darcos/install-hermes.sh" >&2
+        exit 1
+    fi
+}
+
+usage() {
+    cat <<'EOF'
+DarcOS — custom Arch Linux distribution
+
+Usage:
+  darcos setup       Configure your AI provider (first run)
+  darcos ai          Start the DarcOS AI assistant (Hermes TUI)
+  darcos welcome     Open the install/repair hub (macOS-Utilities style)
+  darcos desktop     Start the DarcOS desktop (Windows-12-style webtop)
+  darcos agent       Talk to the always-on agent daemon (OS-as-harness)
+  darcos persona     Choose the agent's personality (samantha, darc, ...)
+  darcos update      Update Hermes Agent to the latest release
+  darcos theme       Color mode: warm (Her) or cool (purple/cyan)
+  darcos shell       Interface mode: voice, gnome, or kde
+  darcos doctor      Diagnose AI installation
+  darcos install     Install DarcOS to disk
+
+Legacy aliases:
+  darcos-ai          Same as `darcos ai`
+  darcos-install     Same as `darcos install`
+EOF
+}
+
+main() {
+    case "${1:-}" in
+        setup)
+            shift
+            require_hermes
+            exec hermes setup "$@"
+            ;;
+        ai)
+            shift
+            exec "$(dirname "$0")/darcos-ai" "$@"
+            ;;
+        welcome)
+            shift
+            exec /usr/local/lib/darcos/welcome.sh "$@"
+            ;;
+        desktop)
+            shift
+            exec /usr/local/lib/darcos/desktop.sh "$@"
+            ;;
+        agent)
+            shift
+            exec /usr/local/bin/darcos-agentd client "$@"
+            ;;
+        persona)
+            shift
+            exec "$(dirname "$0")/darcos-persona" "$@"
+            ;;
+        update)
+            shift
+            if [[ "${EUID}" -ne 0 ]]; then
+                exec sudo /usr/local/lib/darcos/hermes-update.sh "$@"
+            fi
+            exec /usr/local/lib/darcos/hermes-update.sh "$@"
+            ;;
+        theme)
+            shift
+            exec "$(dirname "$0")/darcos-theme" "$@"
+            ;;
+        shell)
+            shift
+            exec "$(dirname "$0")/darcos-shell" "$@"
+            ;;
+        doctor)
+            shift
+            require_hermes
+            exec hermes doctor "$@"
+            ;;
+        install)
+            shift
+            exec "$(dirname "$0")/darcos-install" "$@"
+            ;;
+        -h|--help|help|"")
+            usage
+            ;;
+        *)
+            echo "Unknown command: $1" >&2
+            echo "Run 'darcos --help' for usage." >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

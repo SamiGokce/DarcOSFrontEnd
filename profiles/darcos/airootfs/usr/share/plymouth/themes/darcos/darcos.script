@@ -1,0 +1,51 @@
+// DarcOS native boot splash — the OS1 presence: a soft white orb that breathes
+// on a warm-dark field, with a slowly turning warm ring and a thin progress arc.
+
+Window.SetBackgroundTopColor(0.043, 0.027, 0.027);     // #0b0707
+Window.SetBackgroundBottomColor(0.086, 0.039, 0.031);  // #160a08
+
+sw = Window.GetWidth();
+sh = Window.GetHeight();
+
+orb_image  = Image("orb.png");
+ring_image = Image("ring.png");
+
+orb = Sprite(orb_image);
+ow = orb_image.GetWidth();
+oh = orb_image.GetHeight();
+orb.SetX(sw / 2 - ow / 2);
+orb.SetY(sh / 2 - oh / 2);
+orb.SetZ(1);
+
+rw = ring_image.GetWidth();
+rh = ring_image.GetHeight();
+
+time = 0;
+progress = 0;
+
+fun refresh() {
+    time++;
+
+    // Breathing orb (opacity pulse — the "alive" feel).
+    pulse = 0.80 + 0.20 * Math.Sin(time / 16);
+    orb.SetOpacity(pulse);
+
+    // Slowly rotating warm ring.
+    angle = time / 90;
+    rotated = ring_image.Rotate(angle);
+    ring = Sprite(rotated);
+    ring.SetX(sw / 2 - rotated.GetWidth() / 2);
+    ring.SetY(sh / 2 - rotated.GetHeight() / 2);
+    ring.SetZ(0);
+    ring.SetOpacity(0.5 + 0.4 * progress);
+}
+Plymouth.SetRefreshFunction(refresh);
+
+fun on_progress(duration, prog) {
+    progress = prog;
+}
+Plymouth.SetBootProgressFunction(on_progress);
+
+// Password / message prompts (for encrypted disks etc.)
+fun display_message(text) { }
+Plymouth.SetMessageFunction(display_message);

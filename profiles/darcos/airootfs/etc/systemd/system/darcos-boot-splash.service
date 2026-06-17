@@ -1,0 +1,21 @@
+[Unit]
+Description=DarcOS OS1 boot experience (helix + chime)
+Documentation=https://github.com/darcy/DarcOSFrontEnd
+# Run after the system is basically up but before the user logs in.
+After=systemd-user-sessions.service plymouth-quit-wait.service sound.target
+Before=getty@tty1.service display-manager.service
+ConditionPathExists=/usr/local/lib/darcos/boot-splash.sh
+ConditionPathExists=!/etc/darcos/skip-splash
+
+[Service]
+Type=oneshot
+# Own tty1 while the splash plays so it has a console/DRM to draw on.
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+ExecStart=/usr/local/lib/darcos/boot-splash.sh
+# Hard ceiling so a stuck splash can never wedge the boot.
+TimeoutStartSec=20
+
+[Install]
+WantedBy=multi-user.target

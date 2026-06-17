@@ -1,26 +1,22 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Build artifacts
+/work/
+/out/
 
-node_modules
-dist
-app/backend/.venv
-app/backend/staticfiles
-dist-ssr
-*.local
+# archiso output
+*.iso
+*.iso.sig
+*.iso.md5
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Build-time skip marker
+profiles/darcos/airootfs/etc/darcos/skip-hermes-install
+
+# Editor
+*.swp
+*~
+.vscode/
+.idea/
+
+# OS
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+Thumbs.db
+.pkgcache/

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>DarcOS — OS1 Boot</title>
+<style>
+  :root {
+    /* Defaults (warm / OS1). Overwritten at runtime from THEMES below so the
+       boot splash, TUI, and desktop all share one palette. Press T to toggle. */
+    --bg:#0b0707; --bg-2:#160a08;
+    --glow-a:#ff5a3c; --glow-b:#ffb27a; --glow-c:#ffe6c4;
+    --ring:#ff7a4d; --text:#f3d9c8;
+  }
+  html, body { margin:0; height:100%; background:var(--bg); overflow:hidden;
+               transition: background 0.8s ease; }
+  body {
+    background: radial-gradient(120% 90% at 50% 45%, var(--bg-2) 0%, var(--bg) 70%);
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  #stage { position:fixed; inset:0; }
+  #hud {
+    position:fixed; left:0; right:0; bottom:13%;
+    text-align:center; pointer-events:none;
+    letter-spacing:0.35em; text-transform:uppercase;
+  }
+  #title { font-size:13px; opacity:0.0; font-weight:600;
+           transition:opacity 1.2s ease; }
+  #pct   { font-size:11px; opacity:0.55; margin-top:10px; font-variant-numeric:tabular-nums;
+           letter-spacing:0.25em; }
+  #done  { opacity:1; }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="hud">
+    <div id="title">OS1</div>
+    <div id="pct">loading&nbsp;&nbsp;0%</div>
+  </div>
+
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script>
+  // ─────────────────────────────────────────────────────────────────────────
+  //  DarcOS OS1 boot visual: a 3D double-helix of light that winds up and
+  //  resolves into a single glowing circle as the system finishes loading.
+  //
+  //  Drive it from real boot progress with:   window.setBootProgress(0..1)
+  //  Otherwise it runs a self-contained demo sweep.
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── Color modes (mirror of config/branding/themes.json) ──────────────────
+  const THEMES = {
+    warm: { label:"OS1 — warm",  bg:"#0b0707", bg2:"#160a08",
+            glowA:"#ff5a3c", glowB:"#ffb27a", glowC:"#ffe6c4", ring:"#ff7a4d", text:"#f3d9c8" },
+    cool: { label:"DarcOS — purple/cyan", bg:"#0c0814", bg2:"#160f24",
+            glowA:"#8a6cff", glowB:"#c89bff", glowC:"#e8d6ff", ring:"#5fe0e8", text:"#e4dcf3" },
+  };
+  const params = new URLSearchParams(location.search);
+  let themeName = (params.get('theme') in THEMES) ? params.get('theme') : 'warm';
+
+  function applyTheme(name) {
+    themeName = name;
+    const t = THEMES[name], r = document.documentElement.style;
+    r.setProperty('--bg', t.bg);     r.setProperty('--bg-2', t.bg2);
+    r.setProperty('--glow-a', t.glowA); r.setProperty('--glow-b', t.glowB);
+    r.setProperty('--glow-c', t.glowC); r.setProperty('--ring', t.ring);
+    r.setProperty('--text', t.text);
+    document.body.style.background =
+      `radial-gradient(120% 90% at 50% 45%, ${t.bg2} 0%, ${t.bg} 70%)`;
+  }
+  applyTheme(themeName);
+
+  const col = (k) => new THREE.Color(THEMES[themeName][k]);
+
+  const COUNT   = 1400;          // points per strand
+  const STRANDS = 2;             // double helix
+  const TURNS   = 3.0;           // helix twists
+  const HEIGHT  = 5.2;           // helix vertical extent
+  const RADIUS  = 1.55;          // helix / final circle radius
+
+  const stage = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  stage.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.1, 100);
+  camera.position.set(0, 0, 8.4);
+
+  // Soft round glow sprite (generated — no external asset, works offline).
+  function glowTexture() {
+    const s = 64, c = document.createElement('canvas'); c.width = c.height = s;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+    grad.addColorStop(0.0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.25,'rgba(255,255,255,0.85)');
+    grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+    g.fillStyle = grad; g.fillRect(0,0,s,s);
+    const t = new THREE.CanvasTexture(c); t.needsUpdate = true; return t;
+  }
+  const sprite = glowTexture();
+
+  // Precompute, for every point, its HELIX home and its CIRCLE home.
+  const N = COUNT * STRANDS;
+  const helix  = new Float32Array(N * 3);
+  const circle = new Float32Array(N * 3);
+  const colors = new Float32Array(N * 3);
+
+  // Recompute the warm gradient across every point for the active theme.
+  function paintColors() {
+    const colorA = col('glowA'), colorB = col('glowB'), colorC = col('glowC');
+    let j = 0;
+    for (let s = 0; s < STRANDS; s++) {
+      for (let i = 0; i < COUNT; i++) {
+        const t = i / (COUNT - 1);
+        const cc = colorA.clone().lerp(colorB, t).lerp(colorC, Math.pow(t,3)*0.5);
+        colors[j*3+0] = cc.r; colors[j*3+1] = cc.g; colors[j*3+2] = cc.b;
+        j++;
+      }
+    }
+  }
+
+  let k = 0;
+  for (let s = 0; s < STRANDS; s++) {
+    const phase = (s / STRANDS) * Math.PI * 2;     // strands offset around the axis
+    for (let i = 0; i < COUNT; i++) {
+      const t = i / (COUNT - 1);                    // 0..1 along the strand
+      // Helix home
+      const ang = phase + t * TURNS * Math.PI * 2;
+      helix[k*3+0] = Math.cos(ang) * RADIUS;
+      helix[k*3+1] = (t - 0.5) * HEIGHT;
+      helix[k*3+2] = Math.sin(ang) * RADIUS;
+      // Circle home — every point lands evenly on one flat ring
+      const cang = (k / N) * Math.PI * 2;
+      circle[k*3+0] = Math.cos(cang) * RADIUS;
+      circle[k*3+1] = 0;
+      circle[k*3+2] = Math.sin(cang) * RADIUS;
+      k++;
+    }
+  }
+  paintColors();
+
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(helix);             // live positions (mutated each frame)
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
+
+  const mat = new THREE.PointsMaterial({
+    size: 0.16, map: sprite, vertexColors: true,
+    transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, opacity: 0.95,
+  });
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+
+  // A faint ring that fades in as we resolve to the circle.
+  const ringGeo = new THREE.TorusGeometry(RADIUS, 0.012, 12, 200);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: col('ring'), transparent:true, opacity:0,
+    blending: THREE.AdditiveBlending, depthWrite:false,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI/2;
+  scene.add(ring);
+
+  // ── progress state ────────────────────────────────────────────────────────
+  let progress = 0;        // target 0..1 (set by boot or demo)
+  let shown    = 0;        // eased displayed value
+  const easeInOut = (x) => x < 0.5 ? 2*x*x : 1 - Math.pow(-2*x+2,2)/2;
+
+  window.setBootProgress = (p) => { progress = Math.max(0, Math.min(1, p)); };
+
+  // Demo sweep when nothing drives it (slightly irregular, like real loading).
+  let demo = true, demoT = 0;
+  window.addEventListener('darcos-boot', () => { demo = false; });
+  function stepDemo(dt) {
+    if (!demo) return;
+    demoT += dt;
+    // 0 -> 100% over ~6s with a couple of natural pauses, then hold.
+    const p = Math.min(1, demoT / 6.0);
+    const eased = p - 0.06*Math.sin(p*Math.PI*3);   // little hitches
+    setBootProgress(Math.max(0, Math.min(1, eased)));
+  }
+
+  const titleEl = document.getElementById('title');
+  const pctEl   = document.getElementById('pct');
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    stepDemo(dt);
+
+    shown += (progress - shown) * Math.min(1, dt * 3.0);
+    const m = easeInOut(shown);                      // morph amount 0..1
+
+    // Interpolate every point helix -> circle, and collapse height as we go.
+    for (let i = 0; i < N; i++) {
+      const a = i*3;
+      const hy = helix[a+1] * (1 - m);               // helix flattens vertically
+      pos[a+0] = helix[a+0]*(1-m) + circle[a+0]*m;
+      pos[a+1] = hy            *(1-m) + circle[a+1]*m;
+      pos[a+2] = helix[a+2]*(1-m) + circle[a+2]*m;
+    }
+    geo.attributes.position.needsUpdate = true;
+
+    // Spin: fast wind-up while helical, settling as it becomes the circle.
+    points.rotation.y += dt * (0.9 - 0.6*m);
+    ring.rotation.z   += dt * 0.2;
+    ringMat.opacity = Math.max(0, (m - 0.6) / 0.4) * 0.9;
+
+    // HUD
+    const pctVal = Math.round(shown * 100);
+    if (pctVal >= 100) {
+      pctEl.textContent = 'ready';
+      pctEl.id = 'done';
+      titleEl.style.opacity = 0.9;
+    } else {
+      pctEl.textContent = 'loading  ' + pctVal + '%';
+    }
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  // Press T to toggle warm <-> cool live (preview both color modes).
+  addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() !== 't') return;
+    applyTheme(themeName === 'warm' ? 'cool' : 'warm');
+    paintColors();
+    geo.attributes.color.needsUpdate = true;
+    ringMat.color = col('ring');
+  });
+  </script>
+</body>
+</html>

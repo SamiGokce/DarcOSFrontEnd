@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# DarcOS agent daemon launcher — the OS-as-harness brain.
+exec /usr/bin/python3 /usr/local/lib/darcos/agentd.py "${@:-serve}"

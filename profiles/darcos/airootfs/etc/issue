@@ -1,0 +1,21 @@
+#
+# DarcOS issue banner — shown before login on live ISO
+#
+
+ \033[1;36m██████╗  █████╗ ██████╗  ██████╗ ███████╗\033[0m
+ \033[1;36m██╔══██╗██╔══██╗██╔══██╗██╔═══██╗██╔════╝\033[0m
+ \033[1;36m██║  ██║███████║██████╔╝██║   ██║███████╗\033[0m
+ \033[1;36m██║  ██║██╔══██║██╔══██╗██║   ██║╚════██║\033[0m
+ \033[1;36m██████╔╝██║  ██║██║  ██║╚██████╔╝███████║\033[0m
+ \033[1;36m╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝\033[0m
+
+ \033[1;33mCustom Arch Linux Distribution\033[0m
+
+ Welcome to the DarcOS live environment.
+ \033[1;35mHermes Agent\033[0m is pre-installed — run \033[1;32mdarcos ai\033[0m to start.
+ Run \033[1;32mdarcos setup\033[0m on first use to choose your LLM provider.
+
+ \033[1;32mdarcos install\033[0m — install DarcOS to disk
+ \033[1;32marchinstall\033[0m — upstream Arch guided installer
+
+ Documentation: https://github.com/darcy/DarcOSFrontEnd

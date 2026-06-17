@@ -1,0 +1,24 @@
+[Unit]
+Description=DarcOS live desktop — boots straight into the Windows-12 webtop
+Documentation=https://github.com/codejedi_ai/DarcOSFrontEnd
+# LIVE ISO ONLY: this condition is true only when booted from the archiso live
+# media. On an installed system it's false, so SDDM + native Plasma is used.
+ConditionKernelCommandLine=archisobasedir
+ConditionPathExists=/usr/local/lib/darcos/desktop.sh
+After=systemd-user-sessions.service darcos-agentd.service darcos-boot-splash.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+TTYPath=/dev/tty1
+TTYReset=yes
+StandardInput=tty
+StandardOutput=journal
+# Brings up cage + chromium showing the Win12 desktop (which lands on the
+# welcome/install hub). Fail-safe: desktop.sh exits 0 if there's no GPU, and
+# Restart= is off so a missing GPU drops cleanly to the text login.
+ExecStart=/usr/local/lib/darcos/desktop.sh
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

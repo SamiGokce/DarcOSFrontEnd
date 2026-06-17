@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DarcOS — Generative Boot</title>
+<style>
+  :root{ --bg:#0b0707; --bg2:#160a08; --glowA:#ff5a3c; --glowB:#ffb27a; --glowC:#ffe6c4;
+         --ring:#ff7a4d; --text:#f3d9c8; --dim:#9a8278; }
+  html,body{margin:0;height:100%;background:var(--bg);overflow:hidden}
+  body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--text)}
+  #stage{position:fixed;inset:0}
+  #hud{position:fixed;left:0;right:0;bottom:12%;text-align:center;pointer-events:none;
+    letter-spacing:.32em;text-transform:uppercase}
+  #pct{font-size:11px;opacity:.55;letter-spacing:.25em}
+  #sig{margin-top:9px;font-size:9.5px;color:var(--dim);letter-spacing:.28em}
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="hud"><div id="pct">loading 0%</div><div id="sig"></div></div>
+  <script src="three.min.js"></script>
+  <script>
+  // ─────────────────────────────────────────────────────────────────────────
+  //  DarcOS GENERATIVE boot visual. The agent generates its OWN 3D rendition:
+  //  a seed (from its identity/mood, or ?seed=) drives a seeded PRNG that picks
+  //  a form archetype + parameters + palette emphasis + motion — so every boot
+  //  is a one-of-a-kind structure that resolves into a sphere when ready.
+  //  With an LLM engine the agent can choose the seed expressively (calm vs
+  //  energetic mood → different forms).
+  // ─────────────────────────────────────────────────────────────────────────
+  const css = getComputedStyle(document.documentElement);
+  const THEMES = {
+    warm:{bg:'#0b0707',bg2:'#160a08',a:'#ff5a3c',b:'#ffb27a',c:'#ffe6c4',ring:'#ff7a4d'},
+    cool:{bg:'#0c0814',bg2:'#160f24',a:'#8a6cff',b:'#c89bff',c:'#e8d6ff',ring:'#5fe0e8'},
+  };
+  const params = new URLSearchParams(location.search);
+  const theme = (params.get('theme') in THEMES) ? params.get('theme') : 'warm';
+  const T = THEMES[theme];
+  document.documentElement.style.setProperty('--bg', T.bg);
+  document.body.style.background = `radial-gradient(120% 90% at 50% 42%, ${T.bg2}, ${T.bg} 72%)`;
+
+  // Seed: supplied by the agent, else derived this session. Same seed → same art.
+  let seed = parseInt(params.get('seed'), 10);
+  if (!Number.isFinite(seed)) seed = (Date.parse(document.lastModified) ^ (performance.now()*1e3|0)) >>> 0;
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  const rnd = mulberry32(seed);
+  const pick = arr => arr[Math.floor(rnd()*arr.length)];
+  const range = (lo,hi) => lo + rnd()*(hi-lo);
+
+  // Generative parameters chosen from the seed — this is the "agent's choice".
+  const ARCH = pick(['helix','knot','superform','lissajous','phyllo']);
+  const G = {
+    arch: ARCH,
+    count: Math.floor(range(1400, 2600)),
+    turns: range(2, 5),
+    p: Math.floor(range(2,5)), q: Math.floor(range(3,8)),
+    fx: Math.floor(range(2,6)), fy: Math.floor(range(2,6)), fz: Math.floor(range(2,6)),
+    m: Math.floor(range(3,9)), n1: range(.3,1.4),
+    radius: range(1.35, 1.85),
+    spin: range(0.4, 1.1) * (rnd()<.5?-1:1),
+    turb: range(0.0, 0.25),
+  };
+
+  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth, innerHeight);
+  document.getElementById('stage').appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, .1, 100);
+  camera.position.set(0,0,8.6);
+
+  function glow(){const s=64,c=document.createElement('canvas');c.width=c.height=s;const g=c.getContext('2d');
+    const r=g.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);r.addColorStop(0,'rgba(255,255,255,1)');
+    r.addColorStop(.25,'rgba(255,255,255,.85)');r.addColorStop(1,'rgba(255,255,255,0)');
+    g.fillStyle=r;g.fillRect(0,0,s,s);const t=new THREE.CanvasTexture(c);t.needsUpdate=true;return t;}
+
+  // Form archetypes: each maps t∈[0,1) (+ index) to a 3D point.
+  const TAU = Math.PI*2;
+  function form(t,i){
+    const R=G.radius;
+    switch(G.arch){
+      case 'helix':{const a=t*G.turns*TAU; return [Math.cos(a)*R,(t-.5)*4.6,Math.sin(a)*R];}
+      case 'knot':{const a=t*TAU; const r=R*(.6+.4*Math.cos(G.q*a));
+        return [r*Math.cos(G.p*a), r*Math.sin(G.p*a), R*Math.sin(G.q*a)];}
+      case 'lissajous':{const a=t*TAU;
+        return [R*Math.sin(G.fx*a), R*Math.sin(G.fy*a+1), R*Math.sin(G.fz*a+2)];}
+      case 'phyllo':{const k=i; const y=1-(k/(G.count-1))*2; const rad=Math.sqrt(1-y*y);
+        const th=k*2.39996; return [Math.cos(th)*rad*R*1.4, y*R*1.4, Math.sin(th)*rad*R*1.4];}
+      default:{ // superformula ring
+        const a=t*TAU; const sf=Math.pow(Math.abs(Math.cos(G.m*a/4)),G.n1)+Math.pow(Math.abs(Math.sin(G.m*a/4)),G.n1);
+        const r=R/(sf||1); return [r*Math.cos(a), (rnd()-.5)*0.3+Math.sin(a*2)*0.4, r*Math.sin(a)];}
+    }
+  }
+
+  const N=G.count;
+  const home=new Float32Array(N*3), sphere=new Float32Array(N*3), pos=new Float32Array(N*3), col=new Float32Array(N*3);
+  const cA=new THREE.Color(T.a), cB=new THREE.Color(T.b), cC=new THREE.Color(T.c);
+  for(let i=0;i<N;i++){
+    const t=i/(N-1);
+    let [x,y,z]=form(t,i);
+    // seeded turbulence for organic variation
+    x+=(rnd()-.5)*G.turb; y+=(rnd()-.5)*G.turb; z+=(rnd()-.5)*G.turb;
+    home[i*3]=x;home[i*3+1]=y;home[i*3+2]=z; pos[i*3]=x;pos[i*3+1]=y;pos[i*3+2]=z;
+    // resolved target: an even sphere (phyllotaxis)
+    const sy=1-(i/(N-1))*2, sr=Math.sqrt(1-sy*sy), sth=i*2.39996;
+    sphere[i*3]=Math.cos(sth)*sr*G.radius; sphere[i*3+1]=sy*G.radius; sphere[i*3+2]=Math.sin(sth)*sr*G.radius;
+    const cc=cA.clone().lerp(cB,t).lerp(cC,Math.pow(t,3)*.5);
+    col[i*3]=cc.r;col[i*3+1]=cc.g;col[i*3+2]=cc.b;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const points=new THREE.Points(geo,new THREE.PointsMaterial({size:.15,map:glow(),vertexColors:true,
+    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:.95}));
+  scene.add(points);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(G.radius,.012,12,220),
+    new THREE.MeshBasicMaterial({color:new THREE.Color(T.ring),transparent:true,opacity:0,
+    blending:THREE.AdditiveBlending,depthWrite:false}));
+  ring.rotation.x=Math.PI/2; scene.add(ring);
+
+  // progress (honest if the file exists, else demo)
+  let progress=0, shown=0, demo=true, demoT=0;
+  window.setBootProgress=p=>{progress=Math.max(0,Math.min(1,p));};
+  function pollHonest(){try{const x=new XMLHttpRequest();x.open('GET','file:///run/darcos/boot-progress',true);
+    x.onload=()=>{const v=parseFloat(x.responseText);if(!isNaN(v)){demo=false;setBootProgress(v);}};x.send();}catch(e){}}
+  setInterval(pollHonest,250);
+  const ease=x=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
+  const pctEl=document.getElementById('pct'), sigEl=document.getElementById('sig');
+  sigEl.textContent = `generated · ${G.arch} · seed ${seed.toString(36).slice(0,6)}`;
+
+  let last=performance.now();
+  function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;
+    if(demo){demoT+=dt;setBootProgress(Math.min(1,demoT/6.5));}
+    shown+=(progress-shown)*Math.min(1,dt*3);
+    const m=ease(shown);
+    for(let i=0;i<N;i++){const a=i*3;
+      pos[a]=home[a]*(1-m)+sphere[a]*m; pos[a+1]=home[a+1]*(1-m)+sphere[a+1]*m; pos[a+2]=home[a+2]*(1-m)+sphere[a+2]*m;}
+    geo.attributes.position.needsUpdate=true;
+    points.rotation.y+=dt*(G.spin*(1-m*.6)); points.rotation.x+=dt*0.05*G.spin;
+    ring.rotation.z+=dt*.2; ring.material.opacity=Math.max(0,(m-.6)/.4)*.85;
+    const pv=Math.round(shown*100);
+    pctEl.textContent = pv>=100?'ready':('loading '+pv+'%');
+    renderer.render(scene,camera); requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);});
+  </script>
+</body>
+</html>

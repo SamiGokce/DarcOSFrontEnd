@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DarcOS Windows-12 Look
+Comment=Apply the DarcOS Windows-12 transformation to KDE Plasma
+Exec=/usr/local/lib/darcos/plasma-win12.sh
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

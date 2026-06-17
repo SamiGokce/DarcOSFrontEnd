@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+#
+# DarcOS guided installer — thin wrapper around archinstall with DarcOS defaults.
+# Run as root on the live ISO.
+#
+
+set -euo pipefail
+
+readonly DARCOS_VERSION_FILE="/etc/darcos-release"
+
+banner() {
+    clear
+    # shellcheck source=/dev/null
+    [[ -f /etc/issue ]] && cat /etc/issue
+    echo
+    if [[ -f "$DARCOS_VERSION_FILE" ]]; then
+        # shellcheck source=/dev/null
+        source "$DARCOS_VERSION_FILE"
+        echo "Version: ${DARCOS_VERSION:-unknown} (${DARCOS_CODENAME:-})"
+        echo
+    fi
+}
+
+require_root() {
+    if [[ "${EUID}" -ne 0 ]]; then
+        echo "darcos-install must be run as root (use sudo)." >&2
+        exit 1
+    fi
+}
+
+check_archinstall() {
+    if ! command -v archinstall &>/dev/null; then
+        echo "archinstall not found. Is this the DarcOS live ISO?" >&2
+        exit 1
+    fi
+}
+
+main() {
+    require_root
+    banner
+
+    echo "How would you like to install DarcOS?"
+    echo
+    echo "  1) Graphical  — themed, guided, friendly (recommended)"
+    echo "  2) Voice      — talk to Samantha; she installs it for you"
+    echo "  3) Classic    — the Arch text installer (archinstall)"
+    echo
+    echo "Your agent's memory lives on a protected DARCOS_SOUL partition that"
+    echo "survives reinstalls — so the agent remembers you next time."
+    echo
+
+    local choice
+    if command -v gum &>/dev/null; then
+        choice="$(printf 'Graphical\nVoice\nClassic' | gum choose)"
+    else
+        read -r -p "Choose [1/2/3]: " choice
+    fi
+
+    case "${choice}" in
+        1|Graphical) graphical_install ;;
+        2|Voice)     voice_install ;;
+        *)           classic_install ;;
+    esac
+}
+
+# Graphical: show the themed installer in a kiosk; fall back if no GPU/browser.
+graphical_install() {
+    local theme="warm"; [[ -f /etc/darcos/theme ]] && theme="$(cat /etc/darcos/theme)"
+    local url="file:///usr/share/darcos/installer/index.html?theme=${theme}"
+    if command -v cage &>/dev/null && command -v chromium &>/dev/null; then
+        cage -- chromium --kiosk --no-first-run "${url}" || classic_install
+    else
+        echo "Graphical front-end needs cage + chromium; using classic installer."
+        classic_install
+    fi
+}
+
+# Voice: hand off to Samantha via the voice client; fall back if no audio.
+voice_install() {
+    if [[ -x /usr/local/bin/darcos-voice ]]; then
+        echo "Starting voice install — say hello to Samantha."
+        /usr/local/bin/darcos-voice || classic_install
+    else
+        classic_install
+    fi
+}
+
+classic_install() {
+    echo "Launching archinstall. After install, run 'darcos setup' then 'darcos ai'."
+    if command -v gum &>/dev/null; then
+        gum confirm "Launch archinstall now?" && archinstall || true
+    else
+        read -r -p "Launch archinstall now? [Y/n] " reply
+        [[ ! "${reply}" =~ ^[Nn]$ ]] && archinstall
+    fi
+}
+
+main "$@"

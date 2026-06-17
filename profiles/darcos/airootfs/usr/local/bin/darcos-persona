@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#
+# DarcOS personality selector — choose which personality drives the agent.
+# Personas live in /usr/share/darcos/personas/*.json.
+#
+
+set -euo pipefail
+
+readonly DIR="${DARCOS_PERSONA_DIR:-/usr/share/darcos/personas}"
+readonly CONF="/etc/darcos/agent.conf"
+
+current() { grep -E '^PERSONA=' "${CONF}" 2>/dev/null | head -1 | cut -d'"' -f2 || echo "samantha"; }
+
+list() {
+    echo "Available personalities:"
+    for f in "${DIR}"/*.json; do
+        [[ -e "$f" ]] || continue
+        local id name tag
+        id="$(basename "$f" .json)"
+        name="$(jq -r '.name' "$f" 2>/dev/null || echo "$id")"
+        tag="$(jq -r '.tagline' "$f" 2>/dev/null || echo "")"
+        local mark=" "; [[ "$id" == "$(current)" ]] && mark="*"
+        printf "  %s %-10s %s — %s\n" "$mark" "$id" "$name" "$tag"
+    done
+}
+
+set_persona() {
+    local id="$1"
+    [[ -f "${DIR}/${id}.json" ]] || { echo "No such persona: ${id}" >&2; list; exit 1; }
+    if [[ "${EUID}" -ne 0 ]]; then
+        sudo sed -i "s/^PERSONA=.*/PERSONA=\"${id}\"/" "${CONF}"
+    else
+        sed -i "s/^PERSONA=.*/PERSONA=\"${id}\"/" "${CONF}"
+    fi
+    echo "Personality → ${id}"
+    systemctl restart darcos-agentd.service 2>/dev/null \
+        && echo "(agent restarted as ${id})" \
+        || echo "(restart the agent to embody it: systemctl restart darcos-agentd)"
+}
+
+case "${1:-}" in
+    ""|-h|--help|list|show) list ;;
+    *) set_persona "$1" ;;
+esac

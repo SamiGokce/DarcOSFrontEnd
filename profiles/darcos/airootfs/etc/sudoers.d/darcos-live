@@ -1,0 +1,2 @@
+# DarcOS sudoers — passwordless sudo for live user (ISO only)
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL
