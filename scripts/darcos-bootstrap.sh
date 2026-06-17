@@ -3,10 +3,18 @@
 # DarcOS bootstrap — turn an existing Arch system into DarcOS.
 #
 # Works on ANY Arch base, x86_64 OR aarch64 (Arch Linux ARM) — the DarcOS layer
-# is arch-independent. This is the supported path for Apple Silicon (M-series):
-#   1. Install Arch Linux ARM into a VMware Fusion VM on the Mac.
-#   2. Clone this repo, run:  sudo bash scripts/darcos-bootstrap.sh
-#   3. Reboot → DarcOS (KDE Plasma skinned as Windows 12) with the agent.
+# is arch-independent. This is the DarcOS ARM edition, mainly for:
+#
+#   Raspberry Pi (4 / 5, aarch64):
+#     1. Flash the official Arch Linux ARM aarch64 image to an SD card.
+#     2. Boot the Pi, clone this repo, run:  sudo bash scripts/darcos-bootstrap.sh
+#     3. Reboot → DarcOS desktop. (Pi 5 / 4GB+ recommended for Plasma.)
+#
+#   VMware (aarch64, e.g. Fusion on Apple Silicon):
+#     1. Install Arch Linux ARM into the VM.
+#     2. Clone + run the bootstrap as above.
+#
+#   ...and the same script installs DarcOS onto any existing x86_64 Arch box.
 #
 # Installs: the native desktop, the boot splash, the agent daemon + tools, the
 # Windows-12 transform, and a passwordless 'darcos' user with Plasma autologin.
@@ -22,7 +30,15 @@ command -v pacman &>/dev/null || { echo "Not an Arch system (no pacman)." >&2; e
 [[ -d "${AF}" ]] || { echo "Can't find the DarcOS overlay at ${AF}" >&2; exit 1; }
 
 ARCH="$(uname -m)"
-log "Bootstrapping DarcOS on ${ARCH}..."
+IS_PI=no
+if grep -qi "raspberry pi" /proc/device-tree/model 2>/dev/null \
+   || grep -qi "raspberry" /proc/cpuinfo 2>/dev/null; then
+    IS_PI=yes
+fi
+log "Bootstrapping DarcOS on ${ARCH}$( [[ "${IS_PI}" == yes ]] && echo ' (Raspberry Pi)' )..."
+if [[ "${IS_PI}" == yes ]]; then
+    log "Pi detected — Plasma runs best on a Pi 5 or 4GB+ Pi 4. Continuing."
+fi
 
 # 1. Packages — arch-independent set (no x86-only microcode/bootloaders here;
 #    those belong to the per-arch install, not the DarcOS layer).
