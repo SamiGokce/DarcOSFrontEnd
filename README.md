@@ -38,13 +38,38 @@ Pushes `linux/amd64` + `linux/arm64` manifest. Kernel repos default to pulling t
 
 ## Image contents
 
+Ubuntu 24.04 dev container with passwordless user **`cs452`** (`sudo` without password).
+
 | Tool | Version |
 |------|---------|
 | QEMU `raspi4b` | 9.2.3 |
 | `aarch64-none-elf-gcc` | 15.2.rel1 |
+| VS Code (`code`, `code-x64`, `code-arm64`) | stable — both x64 and arm64 builds installed; `code` runs the native arch |
 | nodejs / npm / ttyd | for KatarOS display-screen workflows |
 
-Environment inside container: `XDIR=/opt/toolchain`, `IN_DOCKER=1`.
+Environment inside container: `XDIR=/opt/toolchain`, `IN_DOCKER=1`, `VSCODE_PORT=8080`, hostname **`darcyos-dev`**. Default shell user: `cs452`.
+
+## Quick start
+
+```bash
+docker compose up
+```
+
+That builds (if needed), starts **`darcyos-dev`**, and serves VS Code in your browser on port **8080** (`/workspace` is the repo root).
+
+Open **http://localhost:8080** (or the URLs printed in the compose logs).
+
+From another machine on your LAN, use your host IP, e.g. `http://192.168.1.10:8080`.
+
+Change the host port: `VSCODE_PORT=9000 docker compose up`.
+
+For a shell inside the running container:
+
+```bash
+docker exec -it darcyos-dev bash
+```
+
+To serve a different folder later, run `code .` or `code /path` from inside the container.
 
 ## Kernel repo usage
 
