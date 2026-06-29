@@ -1,0 +1,17 @@
+# Shared CS452ROTOS dev image — build: docker compose build
+# Uses the host's default platform (linux/amd64 or linux/arm64).
+name: darcyos-platform
+
+services:
+  build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: darcyos-dev
+
+  shell:
+    image: darcyos-dev
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: ["bash"]
