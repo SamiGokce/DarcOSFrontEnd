@@ -21,6 +21,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     IN_DOCKER=1 \
     VSCODE_PORT=8080 \
     HOSTNAME=darcyos-dev \
+    WORKBENCH_HOME=/home/cs452/projects \
     PATH=/opt/toolchain/bin:/usr/local/bin:/usr/bin:${PATH}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -87,14 +88,15 @@ RUN --mount=type=bind,source=deps,target=/tmp/deps \
         -C /opt/toolchain --strip-components=1; \
     /opt/toolchain/bin/aarch64-none-elf-gcc --version
 
-RUN mkdir -p /workspace && chown cs452:cs452 /workspace
+RUN mkdir -p /home/cs452/projects /workspace \
+    && chown -R cs452:cs452 /home/cs452 /workspace
 
 COPY scripts/start-vscode.sh /usr/local/bin/start-vscode.sh
 COPY scripts/code-wrapper.sh /usr/local/bin/code
 RUN sed -i 's/\r$//' /usr/local/bin/start-vscode.sh /usr/local/bin/code \
     && chmod 755 /usr/local/bin/start-vscode.sh /usr/local/bin/code
 
-WORKDIR /workspace
+WORKDIR /home/cs452/projects
 EXPOSE 8080
 USER cs452
-CMD ["/usr/local/bin/start-vscode.sh", "/workspace"]
+CMD ["/usr/local/bin/start-vscode.sh"]

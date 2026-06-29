@@ -55,9 +55,9 @@ Environment inside container: `XDIR=/opt/toolchain`, `IN_DOCKER=1`, `VSCODE_PORT
 docker compose up
 ```
 
-That builds (if needed), starts **`darcyos-dev`**, and serves VS Code in your browser on port **8080** (`/workspace` is the repo root).
+That builds (if needed), starts **`darcyos-dev`**, runs `sudo apt update`, and serves VS Code on port **8080** with **`/home/cs452/projects`** opened by default.
 
-Open **http://localhost:8080** (or the URLs printed in the compose logs).
+Kernel and other repos live under `/home/cs452/projects`. That folder is persisted in the `cs452-projects` Docker volume.
 
 From another machine on your LAN, use your host IP, e.g. `http://192.168.1.10:8080`.
 
@@ -69,7 +69,7 @@ For a shell inside the running container:
 docker exec -it darcyos-dev bash
 ```
 
-To serve a different folder later, run `code .` or `code /path` from inside the container.
+To serve a different folder, run `code .` or `code /path` from inside the container.
 
 ## Kernel repo usage
 

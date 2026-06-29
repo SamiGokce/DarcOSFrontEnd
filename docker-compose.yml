@@ -10,9 +10,12 @@ services:
     container_name: darcyos-dev
     hostname: darcyos-dev
     user: cs452
-    working_dir: /workspace
+    working_dir: /home/cs452/projects
     ports:
       - "${VSCODE_PORT:-8080}:8080"
     volumes:
-      - .:/workspace
-    command: ["/usr/local/bin/start-vscode.sh", "/workspace"]
+      - cs452-projects:/home/cs452/projects
+    command: ["/usr/local/bin/start-vscode.sh"]
+
+volumes:
+  cs452-projects:
