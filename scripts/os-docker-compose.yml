@@ -1,0 +1,50 @@
+# Uses CS452ROTOS-PLATFORM from Docker Hub (see ../github_codejedi-ai_CS452ROTOS-PLATFORM)
+#
+# Terminal-only dev workflow — QEMU serial on host stdio.
+# Browser / ttyd remote dev: CS452ROTOS-PLATFORM repo only (not kernel repos).
+#
+#   docker compose run --rm -it run      # interactive QEMU OS terminal (./dev.sh run)
+#   docker compose run --rm shell        # bash in the container
+#   docker compose run --rm -T build     # make all (./dev.sh make)
+#   docker compose run --rm -T test      # timed smoke test (./dev.sh test)
+
+name: __COMPOSE_PROJECT_NAME__
+
+x-dev: &dev
+  image: ${DARCYOS_IMAGE:-codejedi-ai/cs452rotos-platform:latest}
+  pull_policy: missing
+__DEV_CPUS_LINE__
+  volumes:
+    - .:/workspace
+__EXTRA_VOLUMES__
+  working_dir: /workspace
+  environment:
+    - XDIR=/opt/toolchain
+    - IN_DOCKER=1
+__EXTRA_ENV__
+
+services:
+  shell:
+    <<: *dev
+    stdin_open: true
+    tty: true
+    entrypoint: ["bash", "/workspace/scripts/container-run.sh"]
+    command: shell
+
+  build:
+    <<: *dev
+    entrypoint: ["bash", "/workspace/scripts/container-run.sh"]
+    command: build
+
+  test:
+    <<: *dev
+    entrypoint: ["bash", "/workspace/scripts/container-run.sh"]
+    command: test
+
+  run:
+    <<: *dev
+    stdin_open: true
+    tty: true
+    entrypoint: ["bash", "/workspace/scripts/container-run.sh"]
+    command: run
+__EXTRA_VOLUMES_BLOCK__

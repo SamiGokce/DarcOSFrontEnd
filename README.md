@@ -73,10 +73,24 @@ To serve a different folder, run `code .` or `code /path` from inside the contai
 
 ## Kernel repo usage
 
+Each kernel repo ships an identical terminal-only `./dev.sh` (synced from `scripts/os-dev.sh` in this repo). It bind-mounts the kernel tree at **`/workspace`** inside `codejedi-ai/cs452rotos-platform:latest` and runs the same in-container commands everywhere (`make`, `run`, `test`, `test-k*`, `shell`).
+
 ```bash
 docker pull codejedi-ai/cs452rotos-platform:latest
 cd ../github_codejedi-ai_CS452ROTOS-SMP-DarcyOS
-./dev.sh run
+./dev.sh run          # interactive QEMU on your terminal
+./dev.sh make all     # build only
+./dev.sh test-k4      # milestone tests
 ```
 
 Or `./dev.sh build-image` to pull (falls back to local `./build.sh` if Hub is unavailable).
+
+Re-sync kernel repos after changing the shared workflow:
+
+```bash
+./scripts/sync-os-dev-workflow.sh
+```
+
+### Remote / browser dev (PLATFORM only)
+
+This repo may optionally expose **ttyd** or VS Code in the browser (`docker compose up` → port 8080). Kernel repos **never** start ttyd — they only attach QEMU serial to the host terminal. For remote work, run PLATFORM, clone any kernel repo under `/home/cs452/projects`, and use the same `make` / `qemu/run.sh` commands inside that container.
