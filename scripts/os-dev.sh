@@ -65,9 +65,13 @@ compose_run() {
 	if [ -t 0 ] && [ -t 1 ]; then
 		tty=(-it)
 	fi
-	# shellcheck disable=SC2207
-	local -a kvm=( $(kvm_args) )
-	"${DC[@]}" run --rm "${tty[@]}" "${kvm[@]}" "$service" "$@"
+	# Bash 3.2 (macOS): empty "${kvm[@]}" trips set -u; skip KVM args when absent.
+	if [ -e /dev/kvm ]; then
+		# shellcheck disable=SC2046
+		"${DC[@]}" run --rm "${tty[@]}" $(kvm_args) "$service" "$@"
+	else
+		"${DC[@]}" run --rm "${tty[@]}" "$service" "$@"
+	fi
 }
 
 cmd="${1:-run}"
