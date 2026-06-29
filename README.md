@@ -45,7 +45,7 @@ Ubuntu 24.04 dev container with passwordless user **`cs452`** (`sudo` without pa
 | QEMU `raspi4b` | 9.2.3 |
 | `aarch64-none-elf-gcc` | 15.2.rel1 |
 | VS Code (`code`, `code-x64`, `code-arm64`) | stable — both x64 and arm64 builds installed; `code` runs the native arch |
-| nodejs / npm / ttyd | for KatarOS display-screen workflows |
+| nodejs / npm | optional tooling in some repos |
 
 Environment inside container: `XDIR=/opt/toolchain`, `IN_DOCKER=1`, `VSCODE_PORT=8080`, hostname **`darcyos-dev`**. Default shell user: `cs452`.
 
