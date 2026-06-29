@@ -73,7 +73,7 @@ To serve a different folder, run `code .` or `code /path` from inside the contai
 
 ## Kernel repo usage
 
-Each kernel repo ships an identical terminal-only `./dev.sh` (synced from `scripts/os-dev.sh` in this repo). It bind-mounts the kernel tree at **`/workspace`** inside `codejedi-ai/cs452rotos-platform:latest` and runs the same in-container commands everywhere (`make`, `run`, `test`, `test-k*`, `shell`).
+Each kernel repo ships an identical terminal-only `./dev.sh` (synced from `scripts/os-dev.sh` in this repo). It bind-mounts the kernel tree at **`/workspace`** inside `codejedi-ai/cs452rotos-platform:latest` and runs the same in-container commands everywhere (`make`, `run`, `test`, `test-k*`).
 
 ```bash
 docker pull codejedi-ai/cs452rotos-platform:latest

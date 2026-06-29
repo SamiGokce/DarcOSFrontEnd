@@ -34,7 +34,6 @@ render_compose() {
 # Browser / ttyd remote dev: CS452ROTOS-PLATFORM repo only (not kernel repos).
 #
 #   docker compose run --rm -it run      # interactive QEMU OS terminal (./dev.sh run)
-#   docker compose run --rm shell        # bash in the container
 #   docker compose run --rm -T build     # make all (./dev.sh make)
 #   docker compose run --rm -T test      # timed smoke test (./dev.sh test)
 
@@ -52,13 +51,6 @@ ${extra_volumes}  working_dir: /workspace
     - IN_DOCKER=1
 ${extra_env}
 services:
-  shell:
-    <<: *dev
-    stdin_open: true
-    tty: true
-    entrypoint: ["bash", "/workspace/scripts/container-run.sh"]
-    command: shell
-
   build:
     <<: *dev
     entrypoint: ["bash", "/workspace/scripts/container-run.sh"]

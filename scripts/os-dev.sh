@@ -27,7 +27,6 @@ Commands:
   test-k2     Run K2 tests under QEMU
   test-k3     Run K3 tests under QEMU
   test-k4     Run K4 tests under QEMU
-  shell       Open a shell in the dev container
   make [args] Run make inside the container (default: make all)
 
 Environment:
@@ -88,18 +87,14 @@ case "${cmd}" in
 		;;
 	test-k1|test-k2|test-k3|test-k4)
 		ensure_image
-		"${DC[@]}" run --rm -T $(kvm_args) shell "${cmd}"
-		;;
-	shell|bash)
-		ensure_image
-		compose_run shell
+		"${DC[@]}" run --rm -T $(kvm_args) build "${cmd}"
 		;;
 	make)
 		ensure_image
 		if [ "$#" -eq 0 ]; then
 			"${DC[@]}" run --rm -T $(kvm_args) build
 		else
-			"${DC[@]}" run --rm -T $(kvm_args) shell make "$@"
+			"${DC[@]}" run --rm -T $(kvm_args) build make "$@"
 		fi
 		;;
 	help|-h|--help)
