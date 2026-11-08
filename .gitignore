@@ -5,6 +5,7 @@ frontend/node_modules/
 # Python / Django
 basalisk-django/.venv/
 basalisk-django/db.sqlite3
+basalisk-django/var/
 __pycache__/
 *.pyc
 .mypy_cache/

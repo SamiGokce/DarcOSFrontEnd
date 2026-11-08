@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { listModels, listPersonas, modelStatus, speak } from "../api/forge";
-import { blankPersona, historyFor } from "../persona/store";
+import { createChat, deleteChat, getChat, listModels, listSouls, modelStatus, sendMessage } from "../api/forge";
+import { CHAT_CHANGED, SOUL_CHANGED, announceChatChange } from "../persona/store";
 import styles from "./Threads.module.css";
 
 const SAMPLING_KEY = "basalisk.modelSampling";
@@ -14,121 +14,241 @@ function readSampling() {
   }
 }
 
-function personaBody(persona) {
-  const body = { ...blankPersona(), ...persona };
-  delete body.id;
-  delete body.created_at;
-  delete body.updated_at;
-  return body;
+function pickModel(models, status) {
+  return (
+    models.find((model) => model.repo_id === status?.model && status?.state === "ready") ||
+    models.find((model) => model.download_state === "downloaded") ||
+    models[0] ||
+    null
+  );
 }
 
 function PygmalionChat() {
+  const navigate = useNavigate();
   const [params] = useSearchParams();
-  const selectedId = params.get("model");
-  const [persona, setPersona] = useState(null);
-  const [turns, setTurns] = useState([]);
+  const chatId = params.get("chat");
+  const soulParam = params.get("soul");
+
+  const [souls, setSouls] = useState([]);
+  const [models, setModels] = useState([]);
+  const [status, setStatus] = useState(null);
+  const [chat, setChat] = useState(null);
+  const [soulSlug, setSoulSlug] = useState("");
+  const [modelId, setModelId] = useState("");
   const [input, setInput] = useState("");
+  const [pending, setPending] = useState("");
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState("write");
   const [notice, setNotice] = useState(null);
-  const [model, setModel] = useState(null);
-  const [chosen, setChosen] = useState(null);
-  const [missing, setMissing] = useState(false);
+  const [trace, setTrace] = useState(null);
   const bottomRef = useRef(null);
+  const createdRef = useRef(null);
 
   useEffect(() => {
-    let stopped = false;
-    listPersonas()
-      .then((personas) => {
-        if (stopped) return;
-        const chosen = personas.find((item) => item.name === "Galatea") || personas[0];
-        if (!chosen) {
-          setMissing(true);
-          return;
-        }
-        setPersona({ ...blankPersona(), ...chosen });
-        setTurns(historyFor(chosen.id).slice());
-      })
-      .catch((err) => {
-        if (!stopped) setNotice(err.message);
-      });
-    return () => {
-      stopped = true;
-    };
+    const read = () => listSouls().then(setSouls).catch((err) => setNotice(err.message));
+    read();
+    window.addEventListener(SOUL_CHANGED, read);
+    return () => window.removeEventListener(SOUL_CHANGED, read);
   }, []);
 
   useEffect(() => {
     let stopped = false;
     const read = () => {
       modelStatus()
-        .then((status) => {
-          if (!stopped) setModel(status);
+        .then((next) => {
+          if (!stopped) setStatus(next);
         })
         .catch(() => {});
       listModels()
         .then((rows) => {
-          if (stopped) return;
-          const pick = rows.find((row) => String(row.id) === String(selectedId)) || rows.find((row) => row.state === "ready") || rows[0];
-          setChosen(pick || null);
+          if (!stopped) setModels(rows);
         })
         .catch(() => {});
     };
     read();
-    const id = setInterval(read, 2500);
+    const id = setInterval(read, busy ? 800 : 2500);
     return () => {
       stopped = true;
       clearInterval(id);
     };
-  }, [selectedId]);
+  }, [busy]);
+
+  useEffect(() => {
+    let stopped = false;
+    if (chatId && createdRef.current === chatId) {
+      createdRef.current = null;
+      return undefined;
+    }
+    setTrace(null);
+    setNotice(null);
+    if (!chatId) {
+      setChat(null);
+      return undefined;
+    }
+    getChat(chatId)
+      .then((loaded) => {
+        if (stopped) return;
+        setChat(loaded);
+        setSoulSlug(loaded.soul);
+      })
+      .catch((err) => {
+        if (!stopped) {
+          setChat(null);
+          setNotice(err.message);
+        }
+      });
+    return () => {
+      stopped = true;
+    };
+  }, [chatId]);
+
+  useEffect(() => {
+    if (chat) {
+      const match = models.find((model) => model.repo_id === chat.repo_id);
+      if (match) setModelId(String(match.id));
+      return;
+    }
+    if (soulParam) setSoulSlug(soulParam);
+    else if (!soulSlug && souls[0]) setSoulSlug(souls[0].slug);
+    if (!modelId && models.length) {
+      const pick = pickModel(models, status);
+      if (pick) setModelId(String(pick.id));
+    }
+  }, [chat, models, souls, soulParam, status, soulSlug, modelId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [turns.length, busy]);
+  }, [chat?.messages?.length, pending, busy]);
+
+  const soul = souls.find((item) => item.slug === soulSlug) || null;
+  const model = models.find((item) => String(item.id) === String(modelId)) || null;
+  const repoId = chat?.repo_id || model?.repo_id;
+  const modelName = chat?.model_name || model?.name;
+  const ready = status?.state === "ready" && status?.model === repoId;
+  const live = ready ? status.detail : model?.state === "downloading" ? model.detail : model?.download_state === "downloaded" ? "Downloaded · loads on the first message" : model?.detail;
+
+  const startFresh = (nextSoul, nextModel) => {
+    if (nextSoul !== undefined) setSoulSlug(nextSoul);
+    if (nextModel !== undefined) setModelId(nextModel);
+    navigate(`/?soul=${encodeURIComponent(nextSoul ?? soulSlug)}`);
+  };
 
   const send = async (event) => {
     event.preventDefault();
     const text = input.trim();
-    if (!text || !persona || busy) return;
-    const history = historyFor(persona.id);
-    history.push({ role: "you", content: text });
-    setTurns(history.slice());
+    if (!text || busy || !soul || !model) return;
     setInput("");
+    setPending(text);
     setBusy(true);
     setNotice(null);
+    setPhase(ready ? "write" : "load");
+    let created = null;
     try {
-      const result = await speak({ persona: personaBody(persona), history, sampling: readSampling() });
-      history.push({ role: "character", content: result.reply });
-      setTurns(history.slice());
+      const target = chat || (created = await createChat(soul.slug, model.id));
+      const result = await sendMessage(target.id, text, readSampling());
+      setTrace({ prompt: result.prompt, memories: result.memories, sections: result.soul_sections });
+      announceChatChange();
+      if (created) {
+        setChat({ ...created, messages: [result.message, result.reply] });
+        createdRef.current = String(created.id);
+        navigate(`/?chat=${created.id}`);
+      } else {
+        setChat((current) => ({ ...current, messages: [...current.messages, result.message, result.reply] }));
+      }
     } catch (err) {
-      history.pop();
-      setTurns(history.slice());
+      if (created) await deleteChat(created.id).catch(() => {});
       setInput(text);
-      setNotice(err.message === "Not loaded." ? "Pygmalion is not loaded yet. Load it to get a reply." : err.message);
+      setNotice(err.message);
     } finally {
+      setPending("");
       setBusy(false);
     }
   };
 
-  const live = chosen && model && chosen.repo_id === model.model ? model.detail : chosen?.detail;
+  const messages = chat?.messages || [];
+  const name = soul?.name || chat?.soul || "Basalisk";
 
   return (
     <div className={styles.layout}>
       <section className={styles.chat}>
         <div className={styles.chatHeader}>
-          <h2>{persona?.name || "Basalisk"}</h2>
-          <span>{chosen ? `${chosen.name} · ${live || "Checking the model…"}` : "No model on the shelf yet."}</span>
+          <h2>{name}</h2>
+          <select
+            className={styles.picker}
+            aria-label="Figure"
+            value={soulSlug}
+            onChange={(event) => startFresh(event.target.value, undefined)}
+            disabled={busy || souls.length === 0}
+          >
+            {souls.length === 0 && <option value="">No figures</option>}
+            {souls.map((item) => (
+              <option key={item.slug} value={item.slug}>{item.name}</option>
+            ))}
+          </select>
+          <select
+            className={styles.picker}
+            aria-label="Model"
+            value={modelId}
+            onChange={(event) => startFresh(undefined, event.target.value)}
+            disabled={busy || models.length === 0}
+          >
+            {models.length === 0 && <option value="">No models</option>}
+            {models.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}{item.download_state === "downloaded" ? "" : " (not downloaded)"}
+              </option>
+            ))}
+          </select>
+          <span>{modelName ? `${modelName} · ${live || "Checking the model…"}` : ""}</span>
+          <button type="button" className="btn btn--sm btn--ghost" onClick={() => startFresh()} disabled={busy || !chat}>
+            New chat
+          </button>
         </div>
 
         <div className={styles.messages}>
-          {missing && <div className={styles.empty}>No figure yet. Start one under Name.</div>}
-          {persona?.greeting && turns.length === 0 && (
-            <div className={styles.bubbleAgent}>{persona.greeting}</div>
+          {souls.length === 0 && (
+            <div className={styles.empty}>
+              No figures yet. Draft a soul.md under Figures, then test it here.
+              <div>
+                <button type="button" className="btn btn--sm" onClick={() => navigate("/figures")}>Open Figures</button>
+              </div>
+            </div>
           )}
-          {turns.map((turn, index) => (
-            <div key={index} className={turn.role === "you" ? styles.bubbleUser : styles.bubbleAgent}>
-              {turn.content}
+          {souls.length > 0 && !chat && !pending && (
+            <div className={styles.empty}>
+              New chat with {name}{modelName ? ` on ${modelName}` : ""}. Each model gets its own chat, so switching models starts fresh.
+              Earlier turns are recalled by relevance once the chat grows.
+            </div>
+          )}
+          {messages.map((message) => (
+            <div key={message.id} className={message.role === "you" ? styles.bubbleUser : styles.bubbleAgent}>
+              {message.content}
             </div>
           ))}
-          {busy && <div className={styles.typing}>{persona?.name || "Pygmalion"} is writing…</div>}
+          {pending && <div className={styles.bubbleUser}>{pending}</div>}
+          {busy && (
+            <div className={styles.typing}>
+              {phase === "load" ? `Loading ${modelName || "the model"}…` : `${name} is writing…`}
+            </div>
+          )}
+          {trace && !busy && (
+            <details className={styles.trace}>
+              <summary>
+                {trace.memories.length
+                  ? `Recalled ${trace.memories.length} earlier exchange${trace.memories.length === 1 ? "" : "s"}`
+                  : "No earlier exchanges recalled"}
+                {" · prompt"}
+              </summary>
+              {trace.memories.length > 0 && (
+                <ul>
+                  {trace.memories.map((memory, index) => (
+                    <li key={index}>{memory}</li>
+                  ))}
+                </ul>
+              )}
+              <pre>{trace.prompt}</pre>
+            </details>
+          )}
           {notice && <div className={styles.typing}>{notice}</div>}
           <div ref={bottomRef} />
         </div>
@@ -137,11 +257,11 @@ function PygmalionChat() {
           <input
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="Message Basalisk…"
+            placeholder={soul ? `Message ${soul.name}…` : "Message Basalisk…"}
             aria-label="chat input"
-            disabled={busy || !persona}
+            disabled={busy || !soul || !model}
           />
-          <button type="submit" className={`btn btn--sm ${styles.sendBtn}`} disabled={busy || !persona}>
+          <button type="submit" className={`btn btn--sm ${styles.sendBtn}`} disabled={busy || !soul || !model}>
             Send
           </button>
         </form>

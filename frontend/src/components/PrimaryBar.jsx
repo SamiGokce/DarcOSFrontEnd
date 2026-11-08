@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { PERSONA_SECTIONS } from '../persona/store';
+import { FIGURE_SECTIONS } from '../persona/store';
 import styles from './PrimaryBar.module.css';
 
 const stroke = {
@@ -73,8 +73,8 @@ const SECTIONS = [
 
 export default function PrimaryBar() {
   const { pathname } = useLocation();
-  const [section, personaId] = pathname.split('/').filter(Boolean);
-  const carry = PERSONA_SECTIONS.includes(section) ? personaId : null;
+  const [section, soulId] = pathname.split('/').filter(Boolean);
+  const carry = FIGURE_SECTIONS.includes(section) ? soulId : null;
 
   return (
     <nav className={styles.rail} aria-label="Primary">

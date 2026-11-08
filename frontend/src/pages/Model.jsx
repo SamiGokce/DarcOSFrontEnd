@@ -114,7 +114,8 @@ export default function Model() {
 
   const state = record?.state || 'catalog';
   const dotClass = state === 'ready' ? styles.dotReady : state === 'downloaded' ? styles.dotDownloaded : state === 'loading' || state === 'downloading' ? styles.dotLoading : state === 'error' ? styles.dotError : '';
-  const showDownload = record && (record.download_state === 'downloading' || record.download_state === 'downloaded');
+  const loading = state === 'loading';
+  const showDownload = record && !loading && (record.download_state === 'downloading' || record.download_state === 'downloaded');
 
   return (
     <div className={styles.page}>
@@ -153,6 +154,13 @@ export default function Model() {
               <span className={`${styles.dot} ${dotClass}`} />
               <span>{record.detail}</span>
             </p>
+            {loading && (
+              <div className={styles.meterRow}>
+                <div className={`${styles.meter} ${styles.meterLoad}`} role="progressbar" aria-label="Loading" aria-busy="true">
+                  <div className={styles.meterFill} />
+                </div>
+              </div>
+            )}
             {showDownload && (
               <div className={styles.meterRow}>
                 <div
@@ -174,7 +182,7 @@ export default function Model() {
             {record.notes && <p className={styles.lead}>{record.notes}</p>}
             <div className={styles.actions}>
               <button type="button" className="btn btn--sm" onClick={() => run('download')} disabled={record.download_state === 'downloading'}>Download</button>
-              <button type="button" className="btn btn--sm" onClick={() => run('load')}>Load</button>
+              <button type="button" className="btn btn--sm" onClick={() => run('load')} disabled={loading}>Load</button>
               {note && <span className={styles.note}>{note}</span>}
               {error && <span className={styles.noteError}>{error}</span>}
             </div>

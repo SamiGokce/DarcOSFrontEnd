@@ -1,19 +1,13 @@
 from django.db import models
 
-TEMPERAMENT_AXES = {
-    'warmth': ('reserved', 'warm'),
-    'playfulness': ('serious', 'playful'),
-    'curiosity': ('content', 'curious'),
-    'boldness': ('gentle', 'bold'),
-}
-
 
 def default_temperament():
-    return {axis: 50 for axis in TEMPERAMENT_AXES}
+    # Migration 0001 imports this for the removed Persona model's field default.
+    return {'warmth': 50, 'playfulness': 50, 'curiosity': 50, 'boldness': 50}
 
 
 class LanguageModel(models.Model):
-    """A model on the shelf. Download and load through Hugging Face come later, except the built-in Pygmalion."""
+    """A model on the shelf, downloaded and loaded through Hugging Face."""
 
     name = models.CharField(max_length=80)
     repo_id = models.CharField(max_length=200, blank=True)
@@ -29,17 +23,13 @@ class LanguageModel(models.Model):
         return self.name
 
 
-class Persona(models.Model):
-    name = models.CharField(max_length=80)
-    epithet = models.CharField(max_length=160, blank=True)
-    traits = models.JSONField(default=list, blank=True)
-    temperament = models.JSONField(default=default_temperament, blank=True)
-    personality = models.TextField(blank=True)
-    appearance = models.TextField(blank=True)
-    scenario = models.TextField(blank=True)
-    speaking_style = models.TextField(blank=True)
-    greeting = models.TextField(blank=True)
-    example_dialogue = models.TextField(blank=True)
+class Chat(models.Model):
+    """One conversation between a soul.md and one model. A new model means a new chat."""
+
+    soul = models.CharField(max_length=63)
+    repo_id = models.CharField(max_length=200)
+    model_name = models.CharField(max_length=80)
+    title = models.CharField(max_length=80, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -47,4 +37,16 @@ class Persona(models.Model):
         ordering = ['-updated_at']
 
     def __str__(self):
-        return self.name
+        return self.title or f'{self.soul} on {self.model_name}'
+
+
+class Message(models.Model):
+    ROLES = [('you', 'You'), ('character', 'Character')]
+
+    chat = models.ForeignKey(Chat, related_name='messages', on_delete=models.CASCADE)
+    role = models.CharField(max_length=10, choices=ROLES)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']

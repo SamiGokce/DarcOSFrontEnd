@@ -1,71 +1,44 @@
-"""Compose persona fields into the prompt format Pygmalion models were trained on.
+"""Turn a soul.md and a chat into the prompt format Pygmalion models were trained on.
 
-    {name}'s Persona: ...
-    Scenario: ...
+    {name}'s Persona: <soul.md>
+    Memory: <earlier exchanges recalled for this message>
     <START>
     You: ...
     {name}: ...
-    <START>
-    {name}: {greeting}
     You: {message}
     {name}:
+
+Recent turns go in verbatim. Older turns are only recalled when they match the
+new message, so a long chat keeps its memory without overflowing the context.
+When soul.md itself is too long, its opening plus the sections that match the
+message are kept.
 """
-import re
+from dataclasses import dataclass, field
 from typing import Callable, Iterable, Mapping
 
-from .models import TEMPERAMENT_AXES
+from . import rag
 
 USER_LABEL = 'You'
 START = '<START>'
-_USER_SPEAKER = re.compile(r'^\{\{user\}\}:', re.MULTILINE)
-_CHAR_SPEAKER = re.compile(r'^\{\{char\}\}:', re.MULTILINE)
+RECENT_TURNS = 6
+MEMORY_LIMIT = 3
 
 
-def _join_words(words: list[str]) -> str:
-    if len(words) <= 2:
-        return ' and '.join(words)
-    return ', '.join(words[:-1]) + ', and ' + words[-1]
+@dataclass
+class Prompt:
+    text: str
+    memories: list[str] = field(default_factory=list)
+    soul_sections: list[str] = field(default_factory=list)
 
 
-def temperament_words(temperament: Mapping[str, int]) -> list[str]:
-    words = []
-    for axis, (low, high) in TEMPERAMENT_AXES.items():
-        value = int(temperament.get(axis, 50))
-        if value <= 15:
-            words.append(f'very {low}')
-        elif value <= 35:
-            words.append(low)
-        elif value >= 85:
-            words.append(f'very {high}')
-        elif value >= 65:
-            words.append(high)
-    return words
+def _section_text(section: Mapping) -> str:
+    if section['title'] and section['text']:
+        return f"{section['title']}: {section['text']}"
+    return section['title'] or section['text']
 
 
-def persona_text(persona: Mapping) -> str:
-    name = persona['name'].strip()
-    sentences = []
-    epithet = persona.get('epithet', '').strip()
-    if epithet:
-        sentences.append(f'{name} is {epithet.rstrip(".")}.')
-
-    described = temperament_words(persona.get('temperament') or {})
-    described += [t.strip() for t in persona.get('traits') or [] if t.strip()]
-    if described:
-        sentences.append(f'{name} is {_join_words(described)}.')
-
-    for field in ('personality', 'appearance', 'speaking_style'):
-        text = persona.get(field, '').strip()
-        if text:
-            sentences.append(text)
-    return ' '.join(sentences)
-
-
-def _fill(text: str, name: str) -> str:
-    """`{{user}}:` at a line start is the speaker label; anywhere else it reads as "you"."""
-    text = _USER_SPEAKER.sub(f'{USER_LABEL}:', text)
-    text = _CHAR_SPEAKER.sub(f'{name}:', text)
-    return text.replace('{{char}}', name).replace('{{user}}', 'you').strip()
+def soul_text(sections: list[Mapping]) -> str:
+    return '\n'.join(part for part in (_section_text(s) for s in sections) if part)
 
 
 def _line(role: str, content: str, name: str) -> str:
@@ -74,51 +47,65 @@ def _line(role: str, content: str, name: str) -> str:
 
 
 def build_prompt(
-    persona: Mapping,
+    name: str,
+    soul: str,
     history: Iterable[Mapping] = (),
     count_tokens: Callable[[str], int] | None = None,
     budget: int | None = None,
-) -> str:
-    """Build the prompt, dropping the oldest turns (then the examples) to fit `budget` tokens."""
-    name = persona['name'].strip()
-    header = [f"{name}'s Persona: {persona_text(persona)}"]
-    scenario = persona.get('scenario', '').strip()
-    if scenario:
-        header.append(f'Scenario: {_fill(scenario, name)}')
+) -> Prompt:
+    name = name.strip() or 'Figure'
+    turns = list(history)
+    query = next((t['content'] for t in reversed(turns) if t['role'] == 'you'), '')
 
-    examples = _fill(persona.get('example_dialogue', ''), name)
-    opening = []
-    greeting = persona.get('greeting', '').strip()
-    if greeting:
-        opening.append(f'{name}: {_fill(greeting, name)}')
+    sections = rag.soul_sections(soul)
+    intro, rest = sections[:1], sections[1:]
+    matched = [rest[i] for i in rag.rank(query, [_section_text(s) for s in rest], k=3)]
 
-    turns = [_line(t['role'], t['content'], name) for t in history]
+    recent = turns[-RECENT_TURNS:]
+    older = turns[:-RECENT_TURNS] if len(turns) > RECENT_TURNS else []
+    pool = rag.exchanges(older, name, USER_LABEL)
+    memories = [pool[i] for i in rag.rank(query, pool, k=MEMORY_LIMIT)]
 
-    def assemble(kept_turns: list[str], with_examples: bool) -> str:
-        lines = list(header)
-        if with_examples and examples:
-            lines += [START, examples]
+    def assemble(soul_parts, memory_parts, kept):
+        lines = [f"{name}'s Persona: {soul_text(soul_parts)}".rstrip()]
+        if memory_parts:
+            lines.append('Memory:')
+            lines += memory_parts
         lines.append(START)
-        lines += opening + kept_turns
+        lines += [_line(t['role'], t['content'], name) for t in kept]
         lines.append(f'{name}:')
         return '\n'.join(lines)
 
-    if count_tokens is None or budget is None:
-        return assemble(turns, True)
+    soul_parts, memory_parts, kept = sections, list(memories), list(recent)
 
-    kept = list(turns)
-    while len(kept) > 1 and count_tokens(assemble(kept, True)) > budget:
+    def result():
+        return Prompt(
+            text=assemble(soul_parts, memory_parts, kept),
+            memories=list(memory_parts),
+            soul_sections=[s['title'] for s in soul_parts if s['title']],
+        )
+
+    if count_tokens is None or budget is None:
+        return result()
+
+    def fits():
+        return count_tokens(assemble(soul_parts, memory_parts, kept)) <= budget
+
+    if not fits():
+        soul_parts = intro + matched
+    while not fits() and memory_parts:
+        memory_parts.pop()
+    while not fits() and len(kept) > 1:
         kept.pop(0)
-    prompt = assemble(kept, True)
-    if count_tokens(prompt) > budget:
-        prompt = assemble(kept, False)
-    return prompt
+    while not fits() and len(soul_parts) > 1:
+        soul_parts = soul_parts[:-1]
+    return result()
 
 
 def clean_reply(raw: str, name: str) -> str:
     """Keep only the character's next line; the model tends to keep writing both sides."""
     cut = len(raw)
-    for stop in (f'\n{USER_LABEL}:', START, f'\n{name}:'):
+    for stop in (f'\n{USER_LABEL}:', START, f'\n{name}:', '\nMemory:'):
         index = raw.find(stop)
         if index != -1:
             cut = min(cut, index)

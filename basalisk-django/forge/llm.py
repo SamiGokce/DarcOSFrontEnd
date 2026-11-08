@@ -3,6 +3,7 @@ import importlib.util
 import logging
 import os
 import threading
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,8 @@ class Engine:
         self._generate_lock = threading.Lock()
         self._tokenizer = None
         self._model = None
+        self._generation = 0
+        self.model_id = None
         self.state = 'idle'
         self.detail = 'Not loaded.'
         self.device = None
@@ -39,28 +42,62 @@ class Engine:
 
     def _status(self, state, detail):
         return {
-            'model': MODEL_ID,
+            'model': self.model_id,
             'state': state,
             'detail': detail,
             'device': self.device,
             'context_tokens': self.context_tokens,
         }
 
-    def start_loading(self) -> dict:
+    def start_loading(self, repo_id=None) -> dict:
+        repo_id = repo_id or MODEL_ID
         with self._state_lock:
-            if self.state in ('loading', 'ready'):
+            if self.model_id == repo_id and self.state in ('loading', 'ready'):
                 return self.status()
             if not _deps_installed():
                 return self.status()
+            self._generation += 1
+            generation = self._generation
+            self.model_id = repo_id
+            self._tokenizer = None
+            self._model = None
+            self.device = None
             self.state = 'loading'
-            self.detail = f'Downloading and loading {MODEL_ID}. The first load downloads several GB.'
-        threading.Thread(target=self._load, name='pygmalion-loader', daemon=True).start()
+            self.detail = f'Loading {repo_id} into memory.'
+        threading.Thread(target=self._load, args=(repo_id, generation), name='pygmalion-loader', daemon=True).start()
         return self.status()
 
-    def _load(self):
+    def ensure_ready(self, repo_id, timeout=300):
+        """Load `repo_id` if needed and wait until it can reply."""
+        status = self.start_loading(repo_id)
+        if status['state'] == 'ready' and status['model'] == repo_id:
+            return status
+        if status['state'] != 'loading':
+            raise ModelNotReady(status)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            time.sleep(0.25)
+            with self._state_lock:
+                if self.model_id != repo_id:
+                    continue
+                if self.state == 'ready':
+                    return self.status()
+                if self.state == 'error':
+                    raise ModelNotReady(self.status())
+        raise ModelNotReady(self._status('error', f'Timed out loading {repo_id}.'))
+
+    def _load(self, repo_id, generation):
         try:
+            import gc
+
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
+
+            gc.collect()
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+            elif torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             if torch.cuda.is_available():
                 device, dtype = 'cuda', torch.float16
@@ -69,23 +106,32 @@ class Engine:
             else:
                 device, dtype = 'cpu', torch.float32
 
-            tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-            model = AutoModelForCausalLM.from_pretrained(MODEL_ID, torch_dtype=dtype)
+            tokenizer = AutoTokenizer.from_pretrained(repo_id, local_files_only=True)
+            model = AutoModelForCausalLM.from_pretrained(
+                repo_id, torch_dtype=dtype, local_files_only=True, low_cpu_mem_usage=True,
+            )
             model.to(device)
             model.eval()
         except Exception as exc:
-            logger.exception('Failed to load %s', MODEL_ID)
+            logger.exception('Failed to load %s', repo_id)
             with self._state_lock:
+                if generation != self._generation:
+                    return
                 self.state = 'error'
-                self.detail = f'{type(exc).__name__}: {exc}'
+                if type(exc).__name__ == 'LocalEntryNotFoundError':
+                    self.detail = 'Download this model before loading it.'
+                else:
+                    self.detail = f'{type(exc).__name__}: {exc}'
             return
 
         context = CONTEXT_OVERRIDE or getattr(model.config, 'max_position_embeddings', None)
         with self._state_lock:
+            if generation != self._generation:
+                return
             self._tokenizer, self._model, self.device = tokenizer, model, device
             self.context_tokens = int(context or DEFAULT_CONTEXT_TOKENS)
             self.state = 'ready'
-            self.detail = f'{MODEL_ID} is ready on {device}.'
+            self.detail = f'{repo_id} is ready on {device}.'
 
     def count_tokens(self, text: str) -> int:
         if self._tokenizer is None:

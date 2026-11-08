@@ -9,17 +9,10 @@ import System from "./pages/System";
 import Reference from "./pages/Reference";
 import styles from "./App.module.css";
 
-function ToFigure() {
-  const { personaId } = useParams();
-  return <Navigate to={personaId ? `/figures/${personaId}` : "/figures"} replace />;
-}
-
 function ToSystem() {
   const { part } = useParams();
   return <Navigate to={`/settings/system/${part || "channels"}`} replace />;
 }
-
-const LEGACY_FIGURES = ["name", "soul", "form", "world", "voice", "speak", "mold"];
 
 export default function App() {
   return (
@@ -29,11 +22,8 @@ export default function App() {
       <div className={styles.stage}>
         <Routes>
           <Route path="/" element={<Threads />} />
-          <Route path="/figures/:personaId?" element={<Figure base="/figures" />} />
-          <Route path="/settings/system/agents/:personaId?" element={<Figure base="/settings/system/agents" />} />
-          {LEGACY_FIGURES.map((name) => (
-            <Route key={name} path={`/${name}/:personaId?`} element={<ToFigure />} />
-          ))}
+          <Route path="/figures/:soulId?" element={<Figure base="/figures" />} />
+          <Route path="/settings/system/agents/:soulId?" element={<Figure base="/settings/system/agents" />} />
           <Route path="/agents" element={<Navigate to="/figures" replace />} />
           <Route path="/model/load" element={<Navigate to="/model" replace />} />
           <Route path="/model/sampling" element={<Navigate to="/model" replace />} />

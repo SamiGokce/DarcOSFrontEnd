@@ -2,43 +2,7 @@ from rest_framework import serializers
 
 from . import downloads
 from .llm import engine
-from .models import TEMPERAMENT_AXES, LanguageModel, Persona, default_temperament
-
-
-class PersonaSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Persona
-        fields = [
-            'id', 'name', 'epithet', 'traits', 'temperament', 'personality', 'appearance',
-            'scenario', 'speaking_style', 'greeting', 'example_dialogue', 'created_at', 'updated_at',
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-    def validate_name(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError('Give the figure a name.')
-        return value
-
-    def validate_traits(self, value):
-        if not isinstance(value, list) or not all(isinstance(t, str) for t in value):
-            raise serializers.ValidationError('Traits must be a list of words.')
-        traits = [t.strip()[:40] for t in value if t.strip()]
-        if len(traits) > 24:
-            raise serializers.ValidationError('Keep it to 24 traits or fewer.')
-        return traits
-
-    def validate_temperament(self, value):
-        if not isinstance(value, dict):
-            raise serializers.ValidationError('Temperament must be an object.')
-        cleaned = default_temperament()
-        for axis in TEMPERAMENT_AXES:
-            if axis in value:
-                try:
-                    cleaned[axis] = max(0, min(100, int(value[axis])))
-                except (TypeError, ValueError) as exc:
-                    raise serializers.ValidationError(f'{axis} must be a number from 0 to 100.') from exc
-        return cleaned
+from .models import Chat, LanguageModel, Message
 
 
 class LanguageModelSerializer(serializers.ModelSerializer):
@@ -115,9 +79,62 @@ class LanguageModelSerializer(serializers.ModelSerializer):
         return live['device'] if live else None
 
 
-class TurnSerializer(serializers.Serializer):
-    role = serializers.ChoiceField(choices=['you', 'character'])
-    content = serializers.CharField(max_length=4000, trim_whitespace=True)
+class SoulSerializer(serializers.Serializer):
+    content = serializers.CharField(allow_blank=True, trim_whitespace=False, max_length=200_000)
+
+
+class NewSoulSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=80)
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Message
+        fields = ['id', 'role', 'content', 'created_at']
+
+
+class ChatSerializer(serializers.ModelSerializer):
+    model_id = serializers.PrimaryKeyRelatedField(
+        queryset=LanguageModel.objects.all(), write_only=True, source='model',
+    )
+    message_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Chat
+        fields = [
+            'id', 'soul', 'model_id', 'repo_id', 'model_name', 'title',
+            'message_count', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'repo_id', 'model_name', 'title', 'message_count', 'created_at', 'updated_at']
+
+    def get_message_count(self, obj):
+        return obj.messages.count()
+
+    def validate_soul(self, value):
+        from . import souls
+
+        try:
+            souls.get(value)
+        except souls.SoulNotFound as exc:
+            raise serializers.ValidationError('No figure with that name.') from exc
+        return value
+
+    def validate(self, attrs):
+        model = attrs.get('model')
+        if model is not None and not model.repo_id:
+            raise serializers.ValidationError({'model_id': 'This model has no repository.'})
+        return attrs
+
+    def create(self, validated_data):
+        model = validated_data.pop('model')
+        return Chat.objects.create(repo_id=model.repo_id, model_name=model.name, **validated_data)
+
+
+class ChatDetailSerializer(ChatSerializer):
+    messages = MessageSerializer(many=True, read_only=True)
+
+    class Meta(ChatSerializer.Meta):
+        fields = ChatSerializer.Meta.fields + ['messages']
 
 
 class SamplingSerializer(serializers.Serializer):
@@ -127,15 +144,9 @@ class SamplingSerializer(serializers.Serializer):
     repetition_penalty = serializers.FloatField(min_value=1, max_value=2, default=1.1)
 
 
-class ConversationSerializer(serializers.Serializer):
-    persona = PersonaSerializer()
-    history = TurnSerializer(many=True, default=list)
+class SendSerializer(serializers.Serializer):
+    content = serializers.CharField(max_length=4000)
     sampling = SamplingSerializer(default=dict)
-
-    def validate_history(self, value):
-        if len(value) > 200:
-            raise serializers.ValidationError('Conversation is too long; clear it to continue.')
-        return value
 
     def validate(self, attrs):
         # A default skips nested validation, so an omitted `sampling` would arrive without its field defaults.

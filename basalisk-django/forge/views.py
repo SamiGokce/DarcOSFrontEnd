@@ -1,31 +1,28 @@
-from django.shortcuts import render
-from rest_framework import status, viewsets
+from django.shortcuts import get_object_or_404
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import souls
 from .downloads import DownloadBusy, start as start_download
 from .llm import ModelNotReady, engine
-from .models import LanguageModel, Persona
+from .models import Chat, LanguageModel, Message
 from .prompt import build_prompt, clean_reply
-from .serializers import ConversationSerializer, LanguageModelSerializer, PersonaSerializer
-
-
-def forge_page(request):
-    return render(request, 'forge/index.html')
-
-
-class PersonaViewSet(viewsets.ModelViewSet):
-    queryset = Persona.objects.all()
-    serializer_class = PersonaSerializer
+from .serializers import (
+    ChatDetailSerializer,
+    ChatSerializer,
+    LanguageModelSerializer,
+    MessageSerializer,
+    NewSoulSerializer,
+    SendSerializer,
+    SoulSerializer,
+)
 
 
 class LanguageModelViewSet(viewsets.ModelViewSet):
     queryset = LanguageModel.objects.all()
     serializer_class = LanguageModelSerializer
-
-    def _is_live(self, model):
-        return bool(model.repo_id) and model.repo_id == engine.status()['model']
 
     @action(detail=True, methods=['post'])
     def download(self, request, pk=None):
@@ -41,44 +38,108 @@ class LanguageModelViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def load(self, request, pk=None):
         model = self.get_object()
-        if self._is_live(model):
-            return Response(engine.start_loading(), status=status.HTTP_202_ACCEPTED)
-        return Response(LanguageModelSerializer(model).data)
+        if not model.repo_id:
+            return Response({'detail': 'This model has no repository.'}, status=status.HTTP_400_BAD_REQUEST)
+        engine.start_loading(model.repo_id)
+        return Response(LanguageModelSerializer(model).data, status=status.HTTP_202_ACCEPTED)
 
 
-def _conversation(request):
-    serializer = ConversationSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    return serializer.validated_data
-
-
-class MoldView(APIView):
-    """Show the exact prompt Pygmalion will receive for an unsaved draft."""
+class SoulListView(APIView):
+    def get(self, request):
+        return Response(souls.list_souls())
 
     def post(self, request):
-        data = _conversation(request)
-        budget = engine.context_tokens - data['sampling']['max_new_tokens']
-        prompt = build_prompt(data['persona'], data['history'], engine.count_tokens, budget)
-        return Response({'prompt': prompt, 'tokens': engine.count_tokens(prompt)})
-
-
-class SpeakView(APIView):
-    def post(self, request):
-        data = _conversation(request)
-        history = data['history']
-        if not history or history[-1]['role'] != 'you':
-            return Response({'detail': 'Say something first.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        sampling = data['sampling']
-        budget = engine.context_tokens - sampling['max_new_tokens']
-        prompt = build_prompt(data['persona'], history, engine.count_tokens, budget)
+        body = NewSoulSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
         try:
-            raw = engine.generate(prompt, **sampling)
+            soul = souls.create(body.validated_data['name'])
+        except souls.SoulError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(soul, status=status.HTTP_201_CREATED)
+
+
+class SoulDetailView(APIView):
+    def _soul(self, slug):
+        try:
+            return souls.get(slug)
+        except souls.SoulNotFound:
+            return None
+
+    def get(self, request, slug):
+        soul = self._soul(slug)
+        if soul is None:
+            return Response({'detail': 'No figure with that name.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(soul)
+
+    def put(self, request, slug):
+        if self._soul(slug) is None:
+            return Response({'detail': 'No figure with that name.'}, status=status.HTTP_404_NOT_FOUND)
+        body = SoulSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return Response(souls.save(slug, body.validated_data['content']))
+
+    def delete(self, request, slug):
+        if self._soul(slug) is None:
+            return Response({'detail': 'No figure with that name.'}, status=status.HTTP_404_NOT_FOUND)
+        souls.delete(slug)
+        Chat.objects.filter(soul=slug).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChatViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    queryset = Chat.objects.all()
+
+    def get_serializer_class(self):
+        return ChatDetailSerializer if self.action == 'retrieve' else ChatSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        soul = self.request.query_params.get('soul')
+        return queryset.filter(soul=soul) if soul else queryset
+
+    @action(detail=True, methods=['post'])
+    def messages(self, request, pk=None):
+        chat = get_object_or_404(Chat, pk=pk)
+        body = SendSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            soul = souls.get(chat.soul)
+        except souls.SoulNotFound:
+            return Response({'detail': 'This chat\'s figure was deleted.'}, status=status.HTTP_410_GONE)
+
+        try:
+            engine.ensure_ready(chat.repo_id)
         except ModelNotReady as exc:
             return Response({'detail': str(exc), 'model': exc.status}, status=status.HTTP_409_CONFLICT)
 
-        reply = clean_reply(raw, data['persona']['name'])
-        return Response({'reply': reply, 'raw': raw, 'prompt': prompt})
+        sampling = body.validated_data['sampling']
+        mine = Message.objects.create(chat=chat, role='you', content=body.validated_data['content'].strip())
+        history = [{'role': m.role, 'content': m.content} for m in chat.messages.all()]
+        budget = engine.context_tokens - sampling['max_new_tokens']
+        prompt = build_prompt(soul['name'], soul['content'], history, engine.count_tokens, budget)
+        try:
+            raw = engine.generate(prompt.text, **sampling)
+        except ModelNotReady as exc:
+            mine.delete()
+            return Response({'detail': str(exc), 'model': exc.status}, status=status.HTTP_409_CONFLICT)
+
+        reply = Message.objects.create(chat=chat, role='character', content=clean_reply(raw, soul['name']) or '…')
+        if not chat.title:
+            chat.title = mine.content[:80]
+        chat.save()
+        return Response({
+            'message': MessageSerializer(mine).data,
+            'reply': MessageSerializer(reply).data,
+            'prompt': prompt.text,
+            'memories': prompt.memories,
+            'soul_sections': prompt.soul_sections,
+        })
 
 
 class ModelView(APIView):

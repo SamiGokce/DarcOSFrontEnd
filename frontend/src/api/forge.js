@@ -13,16 +13,22 @@ async function forge(path, { method = 'GET', body } = {}) {
   return data;
 }
 
-export const listPersonas = () => forge('/personas/');
-export const getPersona = (id) => forge(`/personas/${id}/`);
-export const createPersona = (persona) => forge('/personas/', { method: 'POST', body: persona });
-export const updatePersona = (id, persona) => forge(`/personas/${id}/`, { method: 'PUT', body: persona });
-export const deletePersona = (id) => forge(`/personas/${id}/`, { method: 'DELETE' });
+export const listSouls = () => forge('/souls/');
+export const getSoul = (slug) => forge(`/souls/${slug}/`);
+export const createSoul = (name) => forge('/souls/', { method: 'POST', body: { name } });
+export const saveSoul = (slug, content) => forge(`/souls/${slug}/`, { method: 'PUT', body: { content } });
+export const deleteSoul = (slug) => forge(`/souls/${slug}/`, { method: 'DELETE' });
+
+export const listChats = (soul) => forge(soul ? `/chats/?soul=${encodeURIComponent(soul)}` : '/chats/');
+export const getChat = (id) => forge(`/chats/${id}/`);
+export const createChat = (soul, modelId) => forge('/chats/', { method: 'POST', body: { soul, model_id: modelId } });
+export const deleteChat = (id) => forge(`/chats/${id}/`, { method: 'DELETE' });
+export const sendMessage = (id, content, sampling) =>
+  forge(`/chats/${id}/messages/`, { method: 'POST', body: { content, sampling } });
+
 export const modelStatus = () => forge('/model/');
 export const loadModel = () => forge('/model/', { method: 'POST' });
 export const listModels = () => forge('/models/');
 export const createModel = (model) => forge('/models/', { method: 'POST', body: model });
 export const downloadModel = (id) => forge(`/models/${id}/download/`, { method: 'POST' });
 export const loadRegisteredModel = (id) => forge(`/models/${id}/load/`, { method: 'POST' });
-export const moldPrompt = (body) => forge('/mold/', { method: 'POST', body: body });
-export const speak = (body) => forge('/speak/', { method: 'POST', body: body });

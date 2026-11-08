@@ -4,12 +4,12 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
-router.register('personas', views.PersonaViewSet)
 router.register('models', views.LanguageModelViewSet)
+router.register('chats', views.ChatViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('mold/', views.MoldView.as_view(), name='forge-mold'),
-    path('speak/', views.SpeakView.as_view(), name='forge-speak'),
+    path('souls/', views.SoulListView.as_view(), name='forge-souls'),
+    path('souls/<str:slug>/', views.SoulDetailView.as_view(), name='forge-soul'),
     path('model/', views.ModelView.as_view(), name='forge-model'),
 ]

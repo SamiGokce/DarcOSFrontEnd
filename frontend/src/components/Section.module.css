@@ -135,6 +135,12 @@
   background: #ef4444;
 }
 
+.editor {
+  min-height: 60vh;
+  resize: vertical;
+  line-height: 1.55;
+}
+
 .dotDownloaded {
   background: #5b4ee3;
 }
@@ -158,6 +164,21 @@
   border-radius: inherit;
   background: #5b4ee3;
   transition: width 0.2s linear;
+}
+
+.meterLoad {
+  position: relative;
+}
+
+.meterLoad .meterFill {
+  width: 35%;
+  transition: none;
+  animation: loadSlide 1.1s ease-in-out infinite;
+}
+
+@keyframes loadSlide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
 }
 
 @media (max-width: 720px) {

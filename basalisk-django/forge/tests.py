@@ -1,99 +1,210 @@
+import os
+import tempfile
 from unittest import mock
 
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from . import downloads
+from . import downloads, rag, souls
 from .llm import engine
-from .prompt import build_prompt, clean_reply, persona_text
+from .models import Chat, LanguageModel
+from .prompt import build_prompt, clean_reply
 
-PERSONA = {
-    'name': 'Galatea',
-    'epithet': 'an ivory statue, newly alive',
-    'traits': ['candid'],
-    'temperament': {'warmth': 90, 'playfulness': 50, 'curiosity': 70, 'boldness': 10},
-    'personality': 'She asks many questions.',
-    'scenario': "{{char}} meets {{user}} in the workshop.",
-    'greeting': 'Who are you?',
-    'example_dialogue': '{{user}}: Hello.\n{{char}}: Hello. Is that a greeting?',
-}
+SOUL = """# Mira
+
+A lighthouse keeper who talks to ships at night.
+
+## Voice
+
+Short sentences. Dry humour. Never uses exclamation marks.
+
+## History
+
+Her brother sailed north and never wrote back. She keeps his compass on the desk.
+
+## Garden
+
+She grows tomatoes in a cracked bathtub behind the lighthouse.
+"""
+
+
+class SoulDirMixin:
+    def setUp(self):
+        super().setUp()
+        self._souls = tempfile.TemporaryDirectory()
+        os.environ['BASALISK_SOULS_DIR'] = self._souls.name
+
+    def tearDown(self):
+        os.environ.pop('BASALISK_SOULS_DIR', None)
+        self._souls.cleanup()
+        super().tearDown()
+
+
+class SoulStoreTests(SoulDirMixin, TestCase):
+    def test_create_writes_a_soul_md_named_after_the_figure(self):
+        soul = souls.create('Mira Vale')
+        self.assertEqual(soul['slug'], 'mira-vale')
+        self.assertEqual(soul['name'], 'Mira Vale')
+        path = os.path.join(self._souls.name, 'mira-vale', 'soul.md')
+        self.assertTrue(os.path.isfile(path))
+        self.assertTrue(soul['content'].startswith('# Mira Vale'))
+
+    def test_the_heading_is_the_name(self):
+        soul = souls.create('Draft')
+        saved = souls.save(soul['slug'], '# Renamed\n\nBody.')
+        self.assertEqual(saved['name'], 'Renamed')
+        self.assertEqual([s['name'] for s in souls.list_souls()], ['Renamed'])
+
+    def test_duplicate_names_get_their_own_folder(self):
+        self.assertEqual(souls.create('Mira')['slug'], 'mira')
+        self.assertEqual(souls.create('Mira')['slug'], 'mira-2')
+
+    def test_slugs_cannot_escape_the_souls_folder(self):
+        with self.assertRaises(souls.SoulNotFound):
+            souls.get('../etc')
+
+    def test_no_figure_is_seeded(self):
+        self.assertEqual(souls.list_souls(), [])
+
+
+class RagTests(TestCase):
+    def test_rank_prefers_documents_sharing_rare_words(self):
+        docs = ['She grows tomatoes behind the lighthouse.', 'Her brother sailed north.', 'The sea is calm.']
+        self.assertEqual(rag.rank('what happened to your brother', docs, k=1), [1])
+
+    def test_rank_skips_documents_with_no_overlap(self):
+        self.assertEqual(rag.rank('zebra', ['a quiet room', 'the sea']), [])
+
+    def test_soul_sections_follow_headings(self):
+        titles = [section['title'] for section in rag.soul_sections(SOUL)]
+        self.assertEqual(titles, ['Mira', 'Voice', 'History', 'Garden'])
+
+    def test_exchanges_keep_the_question_with_its_answer(self):
+        turns = [
+            {'role': 'you', 'content': 'Do you garden?'},
+            {'role': 'character', 'content': 'Tomatoes. In a bathtub.'},
+            {'role': 'you', 'content': 'Odd.'},
+        ]
+        self.assertEqual(rag.exchanges(turns, 'Mira'), [
+            'You: Do you garden?\nMira: Tomatoes. In a bathtub.',
+            'You: Odd.',
+        ])
 
 
 class PromptTests(TestCase):
-    def test_persona_text_turns_temperament_into_words(self):
-        text = persona_text(PERSONA)
-        self.assertIn('Galatea is an ivory statue, newly alive.', text)
-        self.assertIn('Galatea is very warm, curious, very gentle, and candid.', text)
-        self.assertIn('She asks many questions.', text)
+    def test_short_chat_uses_the_whole_soul_and_recent_turns(self):
+        prompt = build_prompt('Mira', SOUL, [{'role': 'you', 'content': 'Hello.'}])
+        lines = prompt.text.splitlines()
+        self.assertTrue(lines[0].startswith("Mira's Persona: Mira: A lighthouse keeper"))
+        self.assertIn('Garden: She grows tomatoes in a cracked bathtub behind the lighthouse.', prompt.text)
+        self.assertEqual(lines[-3:], ['<START>', 'You: Hello.', 'Mira:'])
+        self.assertEqual(prompt.memories, [])
 
-    def test_build_prompt_uses_pygmalion_format(self):
-        prompt = build_prompt(PERSONA, [{'role': 'you', 'content': 'A visitor.'}])
-        self.assertEqual(prompt.splitlines(), [
-            "Galatea's Persona: " + persona_text(PERSONA),
-            'Scenario: Galatea meets you in the workshop.',
-            '<START>',
-            'You: Hello.',
-            'Galatea: Hello. Is that a greeting?',
-            '<START>',
-            'Galatea: Who are you?',
-            'You: A visitor.',
-            'Galatea:',
-        ])
+    def test_older_turns_are_recalled_when_they_match(self):
+        history = [
+            {'role': 'you', 'content': 'What is your brother called?'},
+            {'role': 'character', 'content': 'Tomas. He took the red boat.'},
+        ]
+        for index in range(8):
+            history += [
+                {'role': 'you', 'content': f'Small talk {index}.'},
+                {'role': 'character', 'content': 'Mm.'},
+            ]
+        history.append({'role': 'you', 'content': 'Remind me, which boat did Tomas take?'})
+        prompt = build_prompt('Mira', SOUL, history)
+        self.assertEqual(prompt.memories, ['You: What is your brother called?\nMira: Tomas. He took the red boat.'])
+        self.assertIn('Memory:\nYou: What is your brother called?', prompt.text)
+        self.assertNotIn('You: Small talk 0.', prompt.text)
 
-    def test_build_prompt_drops_oldest_turns_to_fit(self):
-        history = [{'role': 'you', 'content': f'message {i} ' + 'x' * 200} for i in range(20)]
-        prompt = build_prompt(PERSONA, history, count_tokens=len, budget=1500)
-        self.assertLessEqual(len(prompt), 1500)
-        self.assertIn('message 19', prompt)
-        self.assertNotIn('message 0 ', prompt)
+    def test_a_long_soul_keeps_its_opening_and_the_matching_sections(self):
+        history = [{'role': 'you', 'content': 'Tell me about the tomatoes.'}]
+        prompt = build_prompt('Mira', SOUL, history, count_tokens=len, budget=320)
+        self.assertIn('Garden: She grows tomatoes', prompt.text)
+        self.assertIn('A lighthouse keeper', prompt.text)
+        self.assertNotIn('Her brother sailed north', prompt.text)
+        self.assertLessEqual(len(prompt.text), 320)
 
     def test_clean_reply_stops_at_the_next_speaker(self):
-        raw = ' I am Galatea. *smiles*\nYou: And I am you.\nGalatea: Indeed.'
-        self.assertEqual(clean_reply(raw, 'Galatea'), 'I am Galatea. *smiles*')
+        raw = ' The light is on. *nods*\nYou: And then?\nMira: Then nothing.'
+        self.assertEqual(clean_reply(raw, 'Mira'), 'The light is on. *nods*')
 
 
-class ApiTests(TestCase):
+class ChatApiTests(SoulDirMixin, TestCase):
     def setUp(self):
+        super().setUp()
         self.client = APIClient()
+        self.soul = souls.save(souls.create('Mira')['slug'], SOUL)
+        self.small = LanguageModel.objects.create(name='Tiny', repo_id='org/tiny', parameters='70M')
+        self.large = LanguageModel.objects.create(name='Large', repo_id='org/large', parameters='6B')
 
-    def test_seeded_galatea_is_listed(self):
-        names = [p['name'] for p in self.client.get('/api/forge/personas/').json()]
-        self.assertIn('Galatea', names)
+    def _chat(self, model):
+        response = self.client.post('/api/forge/chats/', {'soul': 'mira', 'model_id': model.id}, format='json')
+        self.assertEqual(response.status_code, 201, response.content)
+        return response.json()
 
-    def test_create_requires_a_name(self):
-        response = self.client.post('/api/forge/personas/', {'name': '  '}, format='json')
-        self.assertEqual(response.status_code, 400)
+    def test_souls_api_lists_creates_saves_and_deletes(self):
+        self.assertEqual([s['slug'] for s in self.client.get('/api/forge/souls/').json()], ['mira'])
+        created = self.client.post('/api/forge/souls/', {'name': 'Orin'}, format='json')
+        self.assertEqual(created.status_code, 201)
+        saved = self.client.put('/api/forge/souls/orin/', {'content': '# Orin\n\nA fox.'}, format='json')
+        self.assertEqual(saved.json()['content'], '# Orin\n\nA fox.')
+        self.assertEqual(self.client.delete('/api/forge/souls/orin/').status_code, 204)
+        self.assertEqual(self.client.get('/api/forge/souls/orin/').status_code, 404)
 
-    def test_temperament_is_clamped(self):
-        response = self.client.post(
-            '/api/forge/personas/', {'name': 'Echo', 'temperament': {'warmth': 400}}, format='json'
-        )
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json()['temperament']['warmth'], 100)
+    def test_each_model_gets_its_own_chat(self):
+        small = self._chat(self.small)
+        large = self._chat(self.large)
+        self.assertNotEqual(small['id'], large['id'])
+        self.assertEqual((small['repo_id'], large['repo_id']), ('org/tiny', 'org/large'))
 
-    def test_mold_previews_an_unsaved_draft(self):
-        response = self.client.post('/api/forge/mold/', {'persona': PERSONA, 'history': []}, format='json')
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()['prompt'].endswith('Galatea: Who are you?\nGalatea:'))
+    def test_sending_loads_the_chat_model_then_saves_both_turns(self):
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready') as ready, \
+                mock.patch.object(engine, 'generate', return_value=' The light is on.\nYou: more'):
+            response = self.client.post(
+                f"/api/forge/chats/{chat['id']}/messages/", {'content': 'Is the light on?'}, format='json',
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        ready.assert_called_once_with('org/tiny')
+        self.assertEqual(response.json()['reply']['content'], 'The light is on.')
+        detail = self.client.get(f"/api/forge/chats/{chat['id']}/").json()
+        self.assertEqual([m['role'] for m in detail['messages']], ['you', 'character'])
+        self.assertEqual(detail['title'], 'Is the light on?')
 
-    def test_speak_is_refused_until_the_model_is_loaded(self):
-        body = {'persona': PERSONA, 'history': [{'role': 'you', 'content': 'Hi'}]}
-        response = self.client.post('/api/forge/speak/', body, format='json')
+    def test_a_failed_load_keeps_the_chat_unchanged(self):
+        from .llm import ModelNotReady
+
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready', side_effect=ModelNotReady({'detail': 'Download this model before loading it.'})):
+            response = self.client.post(
+                f"/api/forge/chats/{chat['id']}/messages/", {'content': 'Hi'}, format='json',
+            )
         self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()['detail'], 'Download this model before loading it.')
+        self.assertEqual(Chat.objects.get(pk=chat['id']).messages.count(), 0)
 
-    def test_speak_returns_the_cleaned_reply(self):
-        body = {'persona': PERSONA, 'history': [{'role': 'you', 'content': 'Hi'}]}
-        with mock.patch.object(engine, 'state', 'ready'), \
-                mock.patch.object(engine, 'generate', return_value=' Hello!\nYou: more'):
-            response = self.client.post('/api/forge/speak/', body, format='json')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['reply'], 'Hello!')
+    def test_deleting_a_figure_removes_its_chats(self):
+        self._chat(self.small)
+        self.client.delete('/api/forge/souls/mira/')
+        self.assertFalse(Chat.objects.exists())
 
 
 class DownloadTests(TestCase):
     def setUp(self):
+        import os
+        import tempfile
+
+        self._download_dir = tempfile.TemporaryDirectory()
+        os.environ['BASALISK_DOWNLOAD_DIR'] = self._download_dir.name
         downloads.reset()
         self.client = APIClient()
+
+    def tearDown(self):
+        import os
+
+        downloads.reset()
+        os.environ.pop('BASALISK_DOWNLOAD_DIR', None)
+        self._download_dir.cleanup()
 
     def test_progress_hook_uses_the_tqdm_module(self):
         import sys
@@ -122,7 +233,7 @@ class DownloadTests(TestCase):
         )
         self.assertEqual(created.status_code, 201)
         model_id = created.json()['id']
-        with mock.patch('forge.downloads._run'):
+        with mock.patch('forge.downloads._spawn'):
             response = self.client.post(f'/api/forge/models/{model_id}/download/')
         body = response.json()
         self.assertEqual(response.status_code, 202)
@@ -141,7 +252,48 @@ class DownloadTests(TestCase):
             {'name': 'Two', 'repo_id': 'example/two', 'parameters': '1M'},
             format='json',
         ).json()['id']
-        with mock.patch('forge.downloads._run'):
+        with mock.patch('forge.downloads._spawn'):
             self.client.post(f'/api/forge/models/{first}/download/')
             response = self.client.post(f'/api/forge/models/{second}/download/')
         self.assertEqual(response.status_code, 409)
+
+    def test_load_starts_the_chosen_model(self):
+        created = self.client.post(
+            '/api/forge/models/',
+            {'name': 'Pygmalion 350M', 'repo_id': 'PygmalionAI/pygmalion-350m', 'parameters': '350M'},
+            format='json',
+        )
+        model_id = created.json()['id']
+        with mock.patch.object(engine, 'start_loading', return_value={}) as start:
+            response = self.client.post(f'/api/forge/models/{model_id}/load/')
+        self.assertEqual(response.status_code, 202)
+        start.assert_called_once_with('PygmalionAI/pygmalion-350m')
+
+    def test_engine_load_targets_the_requested_repo(self):
+        previous = (engine.model_id, engine.state, engine.detail, engine._generation)
+        try:
+            with mock.patch('forge.llm.threading.Thread') as thread:
+                status = engine.start_loading('PygmalionAI/pygmalion-350m')
+            thread.return_value.start.assert_called_once()
+            self.assertEqual(status['model'], 'PygmalionAI/pygmalion-350m')
+            self.assertEqual(status['state'], 'loading')
+            self.assertIn('pygmalion-350m', status['detail'])
+        finally:
+            engine.model_id, engine.state, engine.detail, engine._generation = previous
+
+    def test_download_starts_a_worker_process(self):
+        with mock.patch('forge.downloads.subprocess.Popen') as popen:
+            popen.return_value.pid = 4242
+            downloads.start('example/worker-model')
+        command = popen.call_args.args[0]
+        self.assertEqual(command[1:], ['-m', 'forge.download_worker', 'example/worker-model'])
+        self.assertTrue(popen.call_args.kwargs['start_new_session'])
+
+    def test_a_dead_worker_is_reported_stopped(self):
+        downloads._write_file({
+            **downloads._view('downloading', 10, 1, 10, 'Downloading…', 'org/gone'),
+            'pid': 2 ** 22,
+        })
+        snap = downloads.snapshot('org/gone')
+        self.assertEqual(snap['state'], 'error')
+        self.assertEqual(snap['detail'], 'Download stopped.')

@@ -1,6 +1,15 @@
-"""Background Hugging Face downloads and the byte progress the UI polls."""
+"""Hugging Face downloads in a separate worker process, with progress the UI polls.
+
+The Django process only starts the worker and reads its status file. The worker
+owns the download so a multi-gigabyte fetch does not run inside the web server.
+"""
+import json
 import logging
+import os
+import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
 
 from huggingface_hub.constants import HF_HUB_CACHE
@@ -20,6 +29,10 @@ class DownloadBusy(Exception):
 def reset():
     with _lock:
         _jobs.clear()
+    folder = _status_dir()
+    if folder.is_dir():
+        for path in folder.glob('*.json'):
+            path.unlink(missing_ok=True)
 
 
 def snapshot(repo_id):
@@ -29,22 +42,43 @@ def snapshot(repo_id):
         job = _jobs.get(repo_id)
         if job:
             return dict(job)
-    if _weights_cached(repo_id):
-        return _view('downloaded', 100, 0, 0, 'Weights are on disk.')
-    return _view('catalog', 0, 0, 0, 'On the shelf. Download fetches the weights from Hugging Face.')
+    stored = _read_file(repo_id)
+    if stored and stored.get('state') == 'downloading':
+        if _is_active(stored):
+            return stored
+        stopped = dict(stored)
+        stopped['state'] = 'error'
+        stopped['detail'] = 'Download stopped.'
+        return stopped
+    if stored and stored.get('state') == 'error':
+        return stored
+    if _weights_cached(repo_id) or (stored and stored.get('state') == 'downloaded'):
+        return _view('downloaded', 100, 0, 0, 'Weights are on disk.', repo_id)
+    return _view('catalog', 0, 0, 0, 'On the shelf. Download fetches the weights from Hugging Face.', repo_id)
 
 
 def start(repo_id):
-    with _lock:
-        current = _jobs.get(repo_id)
-        if current and current['state'] == 'downloading':
-            return dict(current)
-        busy = next((item['repo_id'] for item in _jobs.values() if item['state'] == 'downloading'), None)
-        if busy:
-            raise DownloadBusy(busy)
-        _jobs[repo_id] = _view('downloading', 0, 0, 0, 'Checking files…', repo_id)
-    threading.Thread(target=_run, args=(repo_id,), name=f'download-{repo_id}', daemon=True).start()
+    for job in _stored_jobs():
+        if not _is_active(job):
+            continue
+        if job.get('repo_id') == repo_id:
+            return snapshot(repo_id)
+        raise DownloadBusy(job.get('repo_id') or repo_id)
+    _write_file(_view('downloading', 0, 0, 0, 'Checking files…', repo_id))
+    _spawn(repo_id)
     return snapshot(repo_id)
+
+
+def run_worker(repo_id):
+    """Entry point for the download worker process."""
+    job = _read_file(repo_id) or _view('downloading', 0, 0, 0, 'Checking files…', repo_id)
+    job['state'] = 'downloading'
+    job['persist'] = True
+    job['pid'] = os.getpid()
+    with _lock:
+        _jobs[repo_id] = job
+    _flush(repo_id, force=True)
+    _run(repo_id)
 
 
 def add_bytes(repo_id, count):
@@ -59,6 +93,7 @@ def add_bytes(repo_id, count):
         total = job['total']
         job['percent'] = 0 if total <= 0 else min(99, int(job['done'] * 100 / total))
         job['detail'] = _byte_detail(job['done'], total)
+        _flush(repo_id)
 
 
 def note_size(repo_id, total, done):
@@ -70,6 +105,7 @@ def note_size(repo_id, total, done):
         job['done'] = max(0, int(done))
         job['percent'] = 0 if job['total'] <= 0 else min(99, int(job['done'] * 100 / job['total']))
         job['detail'] = _byte_detail(job['done'], job['total']) if job['total'] else 'Downloading…'
+        _flush(repo_id)
 
 
 def finish(repo_id):
@@ -80,6 +116,7 @@ def finish(repo_id):
         job['state'] = 'downloaded'
         job['percent'] = 100
         job['detail'] = 'Weights are on disk.'
+        _flush(repo_id, force=True)
 
 
 def fail(repo_id, exc):
@@ -93,6 +130,7 @@ def fail(repo_id, exc):
             return
         job['state'] = 'error'
         job['detail'] = message
+        _flush(repo_id, force=True)
 
 
 def _run(repo_id):
@@ -133,6 +171,99 @@ def _run(repo_id):
         finish(repo_id)
     except Exception as exc:
         fail(repo_id, exc)
+
+
+def _spawn(repo_id):
+    root = Path(__file__).resolve().parent.parent
+    env = os.environ.copy()
+    env['PYTHONPATH'] = str(root) + os.pathsep + env.get('PYTHONPATH', '')
+    log_path = _status_path(repo_id).with_suffix('.log')
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log = open(log_path, 'ab', buffering=0)
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, '-m', 'forge.download_worker', repo_id],
+            cwd=str(root),
+            env=env,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=log,
+        )
+    finally:
+        log.close()
+    stored = _read_file(repo_id)
+    if stored and not stored.get('pid'):
+        stored['pid'] = proc.pid
+        _write_file(stored)
+    return proc
+
+
+def _flush(repo_id, force=False):
+    job = _jobs.get(repo_id)
+    if not job or not job.get('persist'):
+        return
+    now = time.monotonic()
+    if not force and now - job.get('_flushed', 0) < 0.3:
+        return
+    job['_flushed'] = now
+    _write_file(job)
+
+
+def _status_dir():
+    override = os.environ.get('BASALISK_DOWNLOAD_DIR')
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parent.parent / 'var' / 'downloads'
+
+
+def _status_path(repo_id):
+    safe = repo_id.replace('/', '--').replace('..', '')
+    return _status_dir() / f'{safe}.json'
+
+
+def _write_file(job):
+    path = _status_path(job['repo_id'])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {key: value for key, value in job.items() if key != '_flushed'}
+    temporary = path.with_suffix('.json.tmp')
+    temporary.write_text(json.dumps(payload))
+    os.replace(temporary, path)
+
+
+def _read_file(repo_id):
+    path = _status_path(repo_id)
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _stored_jobs():
+    folder = _status_dir()
+    if not folder.is_dir():
+        return []
+    jobs = []
+    for path in folder.glob('*.json'):
+        try:
+            jobs.append(json.loads(path.read_text()))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return jobs
+
+
+def _is_active(job):
+    if not job or job.get('state') != 'downloading':
+        return False
+    pid = job.get('pid')
+    if not pid:
+        return True
+    try:
+        os.kill(int(pid), 0)
+    except OSError:
+        return False
+    return True
 
 
 def _weights_cached(repo_id):

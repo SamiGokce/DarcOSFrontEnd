@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useMatch, useNavigate } from "react-router-dom";
 import styles from "../pages/Threads.module.css";
-import { PERSONA_SECTIONS } from "../persona/store";
+import { FIGURE_SECTIONS } from "../persona/store";
+import ChatList from "./ChatList";
 import ModelList from "./ModelList";
 import PersonaList, { FigureRows } from "./PersonaList";
 import bar from "./SecondaryBar.module.css";
 
 const RESERVED = new Set([
-  ...PERSONA_SECTIONS,
+  ...FIGURE_SECTIONS,
   "agents",
   "model",
   "settings",
@@ -257,8 +258,9 @@ function Menu({ title, links }) {
 export default function SecondaryBar() {
   const { pathname } = useLocation();
   const section = pathname.split("/").filter(Boolean)[0] || "";
-  if (!section || section === "model") return <ModelList manage={section === "model"} />;
-  if (PERSONA_SECTIONS.includes(section)) return <PersonaList />;
+  if (!section) return <ChatList />;
+  if (section === "model") return <ModelList manage />;
+  if (FIGURE_SECTIONS.includes(section)) return <PersonaList />;
   if (MENUS[section]) return <Menu {...MENUS[section]} />;
   return <ChatSidebar />;
 }
