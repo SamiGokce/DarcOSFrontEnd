@@ -1,0 +1,4 @@
+# Packages needed to run Pygmalion locally; install alongside requirements.txt.
+# transformers is pinned to a release that accepts huggingface-hub 0.30.x from requirements.txt.
+torch>=2.6
+transformers==4.51.3

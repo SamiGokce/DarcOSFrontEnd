@@ -1,0 +1,16 @@
+.frame {
+  display: flex;
+  align-items: flex-start;
+  min-height: 100vh;
+}
+
+.stage {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .frame {
+    flex-direction: column;
+  }
+}

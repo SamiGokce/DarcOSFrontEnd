@@ -1,0 +1,156 @@
+{% load static %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name }}</title>
+    <link rel="icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        header {
+            background-color: #007BFF;
+            color: white;
+            text-align: center;
+            padding: 1em 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: flex-start; /* Align items to the start (left) */
+        }
+
+        header img {
+            max-height: 50px;
+            margin-right: 10px;
+            margin-left: 10px; /* Add left margin */
+            order: 1; /* Ensure logo is first */
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 24px;
+            order: 2; /* Ensure heading is second */
+        }
+
+        .hero-section {
+            background-image: url("{% static 'images/Urustanguittedand.jpeg' %}"); /* Set the background image */
+            background-size: cover; /* Cover the entire section */
+            background-position: center; /* Center the image */
+            color: white; /* Set text color to white for better visibility on the background */
+            text-align: center; /* Center the text */
+            padding: 100px 20px; /* Add padding.  Adjust as needed. */
+            display: flex; /* Use flexbox for vertical alignment */
+            flex-direction: column;
+            justify-content: center; /* Vertically center content */
+            align-items: center;
+            border-radius: 8px; /* Optional: Add rounded corners */
+            margin: 20px auto;
+            max-width: 800px;
+        }
+
+        .hero-section h2 {
+            font-size: 36px; /* Make the heading বড় */
+            margin-bottom: 20px; /* Add space below the heading */
+            color: 4CAF50;
+        }
+
+        .hero-section p {
+            font-size: 18px; /* Increase font size for the paragraph */
+            margin-bottom: 30px; /* Add space below the paragraph */
+            color: 4CAF50;
+        }
+
+
+        main {
+            padding: 20px;
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #2C3E50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        p {
+            margin-bottom: 15px;
+        }
+
+        footer {
+            background-color: #007BFF;
+            color: white;
+            text-align: center;
+            padding: 1em 0;
+            margin-top: 20px;
+        }
+
+        .content-section {
+            margin-bottom: 30px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 10px;
+            transition: background-color 0.3s ease;
+        }
+
+        .button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <img src="{% static 'logo.png' %}" alt="Logo">
+        <h1>{{ app_name }}</h1>
+    </header>
+
+    <div class="hero-section">
+        <h2>{{ app_name }}</h2>
+        <p>Discover amazing features and services.</p>
+        <a href="#" class="button">Explore More</a>
+    </div>
+
+    <main>
+        <div class="content-section">
+            <p>This is a basic index page for a Django website. It demonstrates how to structure a simple HTML layout.</p>
+        </div>
+
+        <div class="content-section">
+            <h2>About this site</h2>
+            <p>You can customize this page to provide information about your web application. Include details about its purpose, features, and how to use it.</p>
+        </div>
+
+        <a href="#" class="button">Learn More</a>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 My Django Site. All rights reserved.</p>
+    </footer>
+
+    <script>
+        // You can add JavaScript here for interactive features
+        console.log("Welcome!");
+    </script>
+</body>
+</html>

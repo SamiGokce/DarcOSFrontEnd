@@ -1,0 +1,100 @@
+.rail {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex: 0 0 68px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 0.4rem;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--glass-border);
+}
+
+.logo {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--color-text);
+}
+
+.icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.item {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+  color: var(--color-text);
+  opacity: 0.62;
+  padding: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.item:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.itemActive {
+  opacity: 1;
+  color: var(--color-accent);
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(120, 110, 220, 0.35);
+}
+
+.dock {
+  margin-top: auto;
+}
+
+@media (max-width: 720px) {
+  .rail {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--glass-border);
+    padding: 0.45rem 0.6rem;
+  }
+
+  .sections {
+    flex-direction: row;
+    overflow-x: auto;
+    width: auto;
+  }
+
+  .dock {
+    margin-top: 0;
+    margin-left: auto;
+  }
+}

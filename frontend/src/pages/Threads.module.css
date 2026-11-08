@@ -1,0 +1,288 @@
+.layout {
+  display: flex;
+  height: 100vh;
+  margin: 0;
+  min-height: 0;
+}
+
+.sidebar {
+  width: 250px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+}
+
+.sidebarTitle {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+  margin: 0.25rem 0.25rem 0;
+}
+
+.threadItem {
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.55);
+  font: inherit;
+}
+
+.threadItemActive {
+  border-color: rgba(120, 110, 220, 0.5);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.threadName {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.stateDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.threadMeta {
+  font-size: 0.72rem;
+  opacity: 0.7;
+  margin-top: 0.15rem;
+}
+
+.chat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 0;
+  border: 0;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.chatHeader {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chatHeader button {
+  margin-left: auto;
+}
+
+.chatHeader h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.chatHeader span {
+  font-size: 0.78rem;
+  opacity: 0.7;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bubbleUser,
+.bubbleAgent {
+  max-width: 70%;
+  padding: 0.65rem 0.9rem;
+  border-radius: 16px;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubbleUser {
+  align-self: flex-end;
+  background: #6d63d6;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.bubbleAgent {
+  align-self: flex-start;
+  background: rgba(0, 0, 0, 0.06);
+  border-bottom-left-radius: 4px;
+}
+
+.delegation {
+  align-self: flex-start;
+  max-width: 80%;
+  border: 1px dashed rgba(109, 99, 214, 0.6);
+  border-radius: 12px;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.78rem;
+  background: rgba(109, 99, 214, 0.06);
+}
+
+.delegationTitle {
+  font-weight: 600;
+  color: #564dbb;
+  margin-bottom: 0.2rem;
+}
+
+.typing {
+  align-self: flex-start;
+  font-size: 0.8rem;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.inputRow {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.inputRow input {
+  flex: 1;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  padding: 0.6rem 0.9rem;
+  font: inherit;
+  outline: none;
+  background: #fff;
+}
+
+.inputRow input:focus {
+  border-color: rgba(109, 99, 214, 0.6);
+}
+
+.tree {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.84rem;
+  padding: 0.28rem 0.45rem;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.treeRow:hover {
+  background: rgba(109, 99, 214, 0.08);
+}
+
+.treeRowActive,
+.treeRowActive:hover {
+  background: rgba(109, 99, 214, 0.18);
+}
+
+.chevron {
+  width: 0.85rem;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 0.65rem;
+  opacity: 0.55;
+  user-select: none;
+}
+
+.treeIcon {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.treeLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.treeState {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  opacity: 0.65;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folderChildren {
+  margin-left: 1.05rem;
+  padding-left: 0.35rem;
+  border-left: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.plus {
+  flex-shrink: 0;
+  width: 1.05rem;
+  text-align: center;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  opacity: 0.45;
+}
+
+.plus:hover {
+  background: rgba(109, 99, 214, 0.18);
+  opacity: 1;
+}
+
+.newAgentRow {
+  composes: treeRow;
+  margin-top: 0.2rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 0 0 6px 6px;
+  opacity: 0.65;
+}
+
+.newAgentRow:hover {
+  opacity: 1;
+}
+
+.inputRow .sendBtn {
+  background: var(--color-accent);
+}
+
+.inputRow .sendBtn:hover {
+  background: var(--color-accent-solid-hover);
+}
+
+.inputRow .sendBtn:disabled {
+  background: var(--color-accent-soft);
+  cursor: default;
+  transform: none;
+}
+
+.empty {
+  margin: auto;
+  opacity: 0.55;
+  font-size: 0.9rem;
+  text-align: center;
+}
