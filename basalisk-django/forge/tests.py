@@ -128,6 +128,10 @@ class PromptTests(TestCase):
         raw = ' The light is on. *nods*\nYou: And then?\nMira: Then nothing.'
         self.assertEqual(clean_reply(raw, 'Mira'), 'The light is on. *nods*')
 
+    def test_clean_reply_stops_at_an_invented_speaker(self):
+        raw = 'What do you fish for?\nTorvald: I fish for sharks.'
+        self.assertEqual(clean_reply(raw, 'Mira'), 'What do you fish for?')
+
 
 class ChatApiTests(SoulDirMixin, TestCase):
     def setUp(self):

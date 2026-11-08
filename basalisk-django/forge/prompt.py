@@ -13,6 +13,7 @@ new message, so a long chat keeps its memory without overflowing the context.
 When soul.md itself is too long, its opening plus the sections that match the
 message are kept.
 """
+import re
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Mapping
 
@@ -22,6 +23,7 @@ USER_LABEL = 'You'
 START = '<START>'
 RECENT_TURNS = 6
 MEMORY_LIMIT = 3
+SPEAKER_LINE = re.compile(r"\n[ \t]*[A-Z][\w' .-]{0,30}:")
 
 
 @dataclass
@@ -109,4 +111,7 @@ def clean_reply(raw: str, name: str) -> str:
         index = raw.find(stop)
         if index != -1:
             cut = min(cut, index)
+    speaker = SPEAKER_LINE.search(raw)
+    if speaker:
+        cut = min(cut, speaker.start())
     return raw[:cut].strip()

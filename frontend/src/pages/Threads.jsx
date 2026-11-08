@@ -128,6 +128,9 @@ function PygmalionChat() {
   const live = ready ? status.detail : model?.state === "downloading" ? model.detail : model?.download_state === "downloaded" ? "Downloaded · loads on the first message" : model?.detail;
 
   const startFresh = (nextSoul, nextModel) => {
+    setChat(null);
+    setTrace(null);
+    setNotice(null);
     if (nextSoul !== undefined) setSoulSlug(nextSoul);
     if (nextModel !== undefined) setModelId(nextModel);
     navigate(`/?soul=${encodeURIComponent(nextSoul ?? soulSlug)}`);
