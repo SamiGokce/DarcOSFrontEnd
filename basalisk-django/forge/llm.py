@@ -22,6 +22,19 @@ def _deps_installed() -> bool:
     return all(importlib.util.find_spec(m) is not None for m in ('torch', 'transformers'))
 
 
+def weights_missing(exc) -> bool:
+    """Transformers wraps a missing local file as a connection OSError."""
+    current = exc
+    seen = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if type(current).__name__ == 'LocalEntryNotFoundError':
+            return True
+        current = current.__cause__
+    text = str(exc)
+    return "couldn't find them in the cached files" in text or 'local_files_only' in text
+
+
 class Engine:
     def __init__(self):
         self._state_lock = threading.Lock()
@@ -48,6 +61,32 @@ class Engine:
             'device': self.device,
             'context_tokens': self.context_tokens,
         }
+
+    def release(self, repo_id=None):
+        """Drop the loaded weights. An in-flight load of the same model is discarded."""
+        with self._state_lock:
+            if repo_id and self.model_id != repo_id:
+                return self.status()
+            self._generation += 1
+            self._tokenizer = None
+            self._model = None
+            self.model_id = None
+            self.device = None
+            self.state = 'idle'
+            self.detail = 'Not loaded.'
+        try:
+            import gc
+
+            import torch
+
+            gc.collect()
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+            elif torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            logger.exception('Failed to free model memory')
+        return self.status()
 
     def start_loading(self, repo_id=None) -> dict:
         repo_id = repo_id or MODEL_ID
@@ -118,7 +157,7 @@ class Engine:
                 if generation != self._generation:
                     return
                 self.state = 'error'
-                if type(exc).__name__ == 'LocalEntryNotFoundError':
+                if weights_missing(exc):
                     self.detail = 'Download this model before loading it.'
                 else:
                     self.detail = f'{type(exc).__name__}: {exc}'

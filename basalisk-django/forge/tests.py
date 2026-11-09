@@ -8,7 +8,8 @@ from rest_framework.test import APIClient
 from . import downloads, rag, souls
 from .llm import engine
 from .models import Chat, LanguageModel
-from .prompt import build_prompt, clean_reply
+from .llm import weights_missing
+from .prompt import build_prompt, clean_reply, is_unfinished, render_reply
 
 SOUL = """# Mira
 
@@ -128,6 +129,45 @@ class PromptTests(TestCase):
         raw = ' The light is on. *nods*\nYou: And then?\nMira: Then nothing.'
         self.assertEqual(clean_reply(raw, 'Mira'), 'The light is on. *nods*')
 
+    def test_a_flag_is_replaced_from_its_definition(self):
+        raw = ' Hello <USER>. Your vessel seems lovely today! So what brings you here?'
+        parsed = render_reply(raw, 'Mira', {'user': 'Torvald'})
+        self.assertEqual(parsed['options'][0]['text'], 'Hello Torvald. Your vessel seems lovely today!')
+        self.assertEqual(parsed['options'][0]['flags'], [{'name': 'USER', 'value': 'Torvald', 'defined': True}])
+        self.assertNotIn('<USER>', parsed['options'][0]['text'])
+
+    def test_blank_lines_are_ranked_options(self):
+        raw = 'Hi. How have you been?\n\n\nGo ahead {CONTINUE} and enjoy yourself.'
+        parsed = render_reply(raw, 'Mira', {'CONTINUE': ''})
+        self.assertEqual([item['rank'] for item in parsed['options']], [1, 2])
+        self.assertEqual(parsed['options'][1]['text'], 'Go ahead and enjoy yourself.')
+        self.assertEqual(parsed['options'][1]['flags'][0]['name'], 'CONTINUE')
+
+    def test_blank_lines_are_separate_reply_options(self):
+        raw = (
+            'Hi. How have you been?\n\n\n\n'
+            'That last question made him blush.\n\n\n'
+            '[CONTINUE]\n\n'
+            'Go ahead and enjoy yourself.'
+        )
+        self.assertEqual(clean_reply(raw, 'Mira'), 'Hi. How have you been?')
+
+    def test_an_unfinished_last_sentence_is_kept_as_a_trailing_thought(self):
+        raw = 'The light is on. She turns toward the wind and the'
+        self.assertEqual(clean_reply(raw, 'Mira'), 'The light is on. She turns toward the wind and the…')
+
+    def test_a_reply_with_only_a_cut_off_fragment_keeps_it(self):
+        self.assertEqual(clean_reply(' The wind is', 'Mira'), 'The wind is…')
+
+    def test_a_reply_cut_off_mid_sentence_is_finished(self):
+        raw = ' The light is on. The wind is'
+        self.assertTrue(is_unfinished(raw, 'Mira'))
+        self.assertFalse(is_unfinished(' The light is on.', 'Mira'))
+
+    def test_a_long_draft_keeps_two_sentences(self):
+        raw = 'The light is on. The wind is up. She tells the whole history of the island. Then she starts another story.'
+        self.assertEqual(clean_reply(raw, 'Mira'), 'The light is on. The wind is up.')
+
     def test_clean_reply_stops_at_an_invented_speaker(self):
         raw = 'What do you fish for?\nTorvald: I fish for sharks.'
         self.assertEqual(clean_reply(raw, 'Mira'), 'What do you fish for?')
@@ -174,6 +214,18 @@ class ChatApiTests(SoulDirMixin, TestCase):
         detail = self.client.get(f"/api/forge/chats/{chat['id']}/").json()
         self.assertEqual([m['role'] for m in detail['messages']], ['you', 'character'])
         self.assertEqual(detail['title'], 'Is the light on?')
+
+    def test_a_reply_cut_off_by_the_token_limit_is_continued(self):
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready'), \
+                mock.patch.object(engine, 'generate', side_effect=[' The light is on. The wind is', ' up.']) as generate:
+            response = self.client.post(
+                f"/api/forge/chats/{chat['id']}/messages/", {'content': 'Tell me.'}, format='json',
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['reply']['content'], 'The light is on. The wind is up.')
+        self.assertEqual(generate.call_count, 2)
+        self.assertEqual(generate.call_args.kwargs['max_new_tokens'], 24)
 
     def test_a_failed_load_keeps_the_chat_unchanged(self):
         from .llm import ModelNotReady
@@ -245,6 +297,95 @@ class DownloadTests(TestCase):
         self.assertEqual(body['download_percent'], 0)
         self.assertEqual(body['state'], 'downloading')
 
+    def test_download_loads_the_model_once_it_finishes(self):
+        model_id = self.client.post(
+            '/api/forge/models/',
+            {'name': 'Pygmalion 350M', 'repo_id': 'PygmalionAI/pygmalion-350m', 'parameters': '350M'},
+            format='json',
+        ).json()['id']
+        with mock.patch('forge.views.threading.Thread') as thread, mock.patch('forge.downloads._spawn'):
+            response = self.client.post(f'/api/forge/models/{model_id}/download/')
+        self.assertEqual(response.status_code, 202)
+        thread.assert_called_once()
+        self.assertEqual(thread.call_args.kwargs['args'], ('PygmalionAI/pygmalion-350m',))
+
+    def test_the_watcher_loads_after_the_download_finishes(self):
+        from . import views
+        states = iter(['downloading', 'downloading', 'downloaded'])
+        with mock.patch('forge.views.snapshot', side_effect=lambda repo: {'state': next(states)}), \
+                mock.patch.object(engine, 'start_loading') as start, mock.patch('forge.views.time.sleep'):
+            views._load_when_downloaded('PygmalionAI/pygmalion-350m')
+        start.assert_called_once_with('PygmalionAI/pygmalion-350m')
+
+    def test_the_watcher_gives_up_when_the_download_fails(self):
+        from . import views
+        with mock.patch('forge.views.snapshot', return_value={'state': 'error'}), \
+                mock.patch.object(engine, 'start_loading') as start:
+            views._load_when_downloaded('PygmalionAI/pygmalion-350m')
+        start.assert_not_called()
+
+    def test_uninstall_deletes_the_cached_weights(self):
+        import tempfile
+        from pathlib import Path
+
+        cache = tempfile.TemporaryDirectory()
+        folder = Path(cache.name) / 'models--example--removable' / 'snapshots' / 'main'
+        folder.mkdir(parents=True)
+        (folder / 'model.safetensors').write_bytes(b'weights')
+        created = self.client.post(
+            '/api/forge/models/',
+            {'name': 'Removable', 'repo_id': 'example/removable', 'parameters': '1M'},
+            format='json',
+        )
+        with mock.patch('forge.downloads.HF_HUB_CACHE', cache.name), mock.patch.object(engine, 'release') as release:
+            response = self.client.post(f"/api/forge/models/{created.json()['id']}/uninstall/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['download_state'], 'catalog')
+        self.assertFalse((Path(cache.name) / 'models--example--removable').exists())
+        release.assert_called_once_with('example/removable')
+        cache.cleanup()
+
+    def test_uninstall_refuses_while_downloading(self):
+        created = self.client.post(
+            '/api/forge/models/',
+            {'name': 'Busy', 'repo_id': 'example/busy', 'parameters': '1M'},
+            format='json',
+        )
+        with mock.patch('forge.downloads._spawn'):
+            self.client.post(f"/api/forge/models/{created.json()['id']}/download/")
+            response = self.client.post(f"/api/forge/models/{created.json()['id']}/uninstall/")
+        self.assertEqual(response.status_code, 409)
+
+    def test_a_gated_download_asks_for_a_huggingface_token(self):
+        with downloads._lock:
+            downloads._jobs['org/gated'] = downloads._view('downloading', 0, 0, 0, 'Checking files…', 'org/gated')
+        downloads.fail('org/gated', type('GatedRepoError', (Exception,), {})('access denied'))
+        snap = downloads.snapshot('org/gated')
+        self.assertTrue(snap['needs_token'])
+        self.assertEqual(snap['detail'], downloads.TOKEN_MESSAGE)
+
+    def test_a_token_is_saved_and_never_returned(self):
+        import os
+        import tempfile
+
+        handle = tempfile.NamedTemporaryFile(delete=False)
+        handle.close()
+        os.environ['BASALISK_TOKEN_FILE'] = handle.name
+        try:
+            secret = 'hf_test_token_value'
+            missing = self.client.post('/api/forge/huggingface/', {'token': '   '}, format='json')
+            self.assertEqual(missing.status_code, 400)
+            saved = self.client.post('/api/forge/huggingface/', {'token': secret}, format='json')
+            self.assertEqual(saved.status_code, 200)
+            self.assertNotIn(secret, saved.content.decode())
+            status_response = self.client.get('/api/forge/huggingface/')
+            self.assertEqual(status_response.json(), {'signed_in': True})
+            self.assertNotIn(secret, status_response.content.decode())
+            self.assertEqual(downloads.read_token(), secret)
+        finally:
+            os.environ.pop('BASALISK_TOKEN_FILE', None)
+            os.remove(handle.name)
+
     def test_a_second_download_is_refused(self):
         first = self.client.post(
             '/api/forge/models/',
@@ -268,10 +409,29 @@ class DownloadTests(TestCase):
             format='json',
         )
         model_id = created.json()['id']
-        with mock.patch.object(engine, 'start_loading', return_value={}) as start:
+        downloaded = {'state': 'downloaded', 'percent': 100, 'detail': 'Weights are on disk.'}
+        with mock.patch('forge.views.snapshot', return_value=downloaded), mock.patch.object(engine, 'start_loading', return_value={}) as start:
             response = self.client.post(f'/api/forge/models/{model_id}/load/')
         self.assertEqual(response.status_code, 202)
         start.assert_called_once_with('PygmalionAI/pygmalion-350m')
+
+    def test_load_refuses_a_model_that_is_not_downloaded(self):
+        created = self.client.post(
+            '/api/forge/models/',
+            {'name': 'Pygmalion 2.7B', 'repo_id': 'PygmalionAI/pygmalion-2.7b', 'parameters': '2.7B'},
+            format='json',
+        )
+        not_downloaded = {'state': 'catalog', 'percent': 0, 'detail': 'On the shelf.'}
+        with mock.patch('forge.views.snapshot', return_value=not_downloaded), mock.patch.object(engine, 'start_loading') as start:
+            response = self.client.post(f"/api/forge/models/{created.json()['id']}/load/")
+        self.assertEqual(response.status_code, 409)
+        start.assert_not_called()
+        self.assertEqual(response.json()['detail'], 'Download this model before loading it.')
+
+    def test_a_missing_cache_is_not_reported_as_a_connection_error(self):
+        wrapped = OSError("We couldn't connect to 'https://huggingface.co' to load the files, and couldn't find them in the cached files.")
+        wrapped.__cause__ = type('LocalEntryNotFoundError', (Exception,), {})('cache miss')
+        self.assertTrue(weights_missing(wrapped))
 
     def test_engine_load_targets_the_requested_repo(self):
         previous = (engine.model_id, engine.state, engine.detail, engine._generation)

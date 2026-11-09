@@ -12,15 +12,16 @@ class LanguageModelSerializer(serializers.ModelSerializer):
     download_state = serializers.SerializerMethodField()
     download_percent = serializers.SerializerMethodField()
     download_detail = serializers.SerializerMethodField()
+    download_needs_token = serializers.SerializerMethodField()
 
     class Meta:
         model = LanguageModel
         fields = [
             'id', 'name', 'repo_id', 'parameters', 'context_tokens', 'notes',
-            'state', 'detail', 'device', 'download_state', 'download_percent', 'download_detail',
+            'state', 'detail', 'device', 'download_state', 'download_percent', 'download_detail', 'download_needs_token',
             'created_at',
         ]
-        read_only_fields = ['id', 'created_at', 'state', 'detail', 'device', 'download_state', 'download_percent', 'download_detail']
+        read_only_fields = ['id', 'created_at', 'state', 'detail', 'device', 'download_state', 'download_percent', 'download_detail', 'download_needs_token']
 
     def validate_name(self, value):
         value = value.strip()
@@ -52,6 +53,9 @@ class LanguageModelSerializer(serializers.ModelSerializer):
     def get_download_detail(self, obj):
         return self._download(obj)['detail']
 
+    def get_download_needs_token(self, obj):
+        return bool(self._download(obj).get('needs_token'))
+
     def get_state(self, obj):
         download = self._download(obj)
         if download['state'] == 'downloading':
@@ -81,6 +85,7 @@ class LanguageModelSerializer(serializers.ModelSerializer):
 
 class SoulSerializer(serializers.Serializer):
     content = serializers.CharField(allow_blank=True, trim_whitespace=False, max_length=200_000)
+    flags = serializers.DictField(child=serializers.CharField(allow_blank=True), required=False)
 
 
 class NewSoulSerializer(serializers.Serializer):
@@ -138,7 +143,7 @@ class ChatDetailSerializer(ChatSerializer):
 
 
 class SamplingSerializer(serializers.Serializer):
-    max_new_tokens = serializers.IntegerField(min_value=1, max_value=512, default=120)
+    max_new_tokens = serializers.IntegerField(min_value=1, max_value=512, default=48)
     temperature = serializers.FloatField(min_value=0, max_value=2, default=0.8)
     top_p = serializers.FloatField(min_value=0.05, max_value=1, default=0.9)
     repetition_penalty = serializers.FloatField(min_value=1, max_value=2, default=1.1)

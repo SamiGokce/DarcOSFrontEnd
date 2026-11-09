@@ -1,4 +1,8 @@
-"""Figures are `souls/<slug>/soul.md` files you draft by hand."""
+"""Figures are `souls/<slug>/soul.md` files you draft by hand.
+
+`flags.json` beside it defines the placeholders a reply may contain, such as USER.
+"""
+import json
 import os
 import re
 import shutil
@@ -6,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SOUL_FILE = 'soul.md'
+FLAGS_FILE = 'flags.json'
+DEFAULT_FLAGS = {'USER': 'You'}
 _SLUG = re.compile(r'^[a-z0-9][a-z0-9-]{0,62}$')
 _TITLE = re.compile(r'^#\s+(.+?)\s*#*\s*$', re.MULTILINE)
 
@@ -59,6 +65,7 @@ def _describe(slug: str, path: Path, content: str | None = None) -> dict:
         'name': title_of(text, slug),
         'file': f'souls/{slug}/{SOUL_FILE}',
         'content': text,
+        'flags': read_flags(slug),
         'updated_at': modified.isoformat(),
     }
 
@@ -98,7 +105,29 @@ def create(name: str) -> dict:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = template(name)
     path.write_text(content, encoding='utf-8')
+    write_flags(slug, DEFAULT_FLAGS)
     return _describe(slug, path, content)
+
+
+def read_flags(slug: str) -> dict:
+    path = _path(slug).with_name(FLAGS_FILE)
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(key): '' if value is None else str(value) for key, value in data.items()}
+
+
+def write_flags(slug: str, flags: dict) -> dict:
+    path = _path(slug).with_name(FLAGS_FILE)
+    if not path.parent.is_dir() or not (path.parent / SOUL_FILE).is_file():
+        raise SoulNotFound(slug)
+    path.write_text(json.dumps(flags, indent=2) + '\n', encoding='utf-8')
+    return flags
 
 
 def save(slug: str, content: str) -> dict:

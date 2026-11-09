@@ -18,8 +18,8 @@
   /* Accent */
   --color-accent: #5b4ee3;
   --color-accent-soft: rgba(105, 90, 205, 0.31);
-  --color-accent-hover: rgba(90, 78, 227, 0.31);
-  --color-accent-solid-hover: #5b4ee3;
+  --color-accent-hover: #4336c9;
+  --color-accent-solid-hover: #4336c9;
 
   /* Glass surfaces */
   --glass-bg: rgba(255, 255, 255, 0.35);

@@ -9,6 +9,8 @@ export default function Figure({ base = '/figures' }) {
   const navigate = useNavigate();
   const [soul, setSoul] = useState(null);
   const [draft, setDraft] = useState('');
+  const [flags, setFlags] = useState('{\n  "USER": "You"\n}');
+  const [savedFlags, setSavedFlags] = useState(flags);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -27,6 +29,9 @@ export default function Figure({ base = '/figures' }) {
         if (stopped) return;
         setSoul(loaded);
         setDraft(loaded.content);
+        const text = JSON.stringify(loaded.flags && Object.keys(loaded.flags).length ? loaded.flags : { USER: 'You' }, null, 2);
+        setFlags(text);
+        setSavedFlags(text);
       })
       .catch((err) => {
         if (!stopped) {
@@ -39,14 +44,25 @@ export default function Figure({ base = '/figures' }) {
     };
   }, [soulId]);
 
-  const dirty = soul && draft !== soul.content;
+  const dirty = soul && (draft !== soul.content || flags !== savedFlags);
 
   const save = async () => {
     if (!soul || saving) return;
+    let parsed;
+    try {
+      parsed = JSON.parse(flags);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Flags must be a JSON object.');
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
     setSaving(true);
     try {
-      const saved = await saveSoul(soul.slug, draft);
+      const saved = await saveSoul(soul.slug, draft, parsed);
       setSoul(saved);
+      const text = JSON.stringify(saved.flags || {}, null, 2);
+      setFlags(text);
+      setSavedFlags(text);
       setNote('Saved.');
       setError('');
       announceSoulChange();
@@ -106,6 +122,20 @@ export default function Figure({ base = '/figures' }) {
             }}
             spellCheck
             aria-label="soul.md"
+          />
+          <p className={styles.lead}>
+            <code>souls/{soul.slug}/flags.json</code> · a reply token like <code>{'<USER>'}</code> is replaced with the value named here.
+          </p>
+          <textarea
+            className="field"
+            value={flags}
+            onChange={(event) => {
+              setFlags(event.target.value);
+              setNote('');
+            }}
+            spellCheck={false}
+            aria-label="flags.json"
+            rows={6}
           />
           <div className={styles.actions}>
             <button type="button" className="btn btn--sm" onClick={save} disabled={!dirty || saving}>

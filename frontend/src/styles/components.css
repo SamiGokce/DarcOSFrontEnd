@@ -55,13 +55,17 @@
   transition: var(--transition);
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   background: var(--color-accent-hover);
   transform: scale(1.05);
 }
 
-.btn:active {
+.btn:active:not(:disabled) {
   transform: scale(0.97);
+}
+
+.btn:disabled {
+  cursor: default;
 }
 
 .btn--sm {
@@ -75,8 +79,9 @@
   border: 1px solid var(--btn-purple-border);
 }
 
-.btn--ghost:hover {
-  background: var(--glass-bg);
+.btn--ghost:hover:not(:disabled) {
+  background: rgba(91, 78, 227, 0.14);
+  border-color: var(--color-accent);
   color: var(--color-accent);
   transform: translateY(-1px);
 }

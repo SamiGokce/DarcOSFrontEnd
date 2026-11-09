@@ -5,7 +5,6 @@ import { CHAT_CHANGED, SOUL_CHANGED, announceChatChange } from "../persona/store
 import styles from "./Threads.module.css";
 
 const SAMPLING_KEY = "basalisk.modelSampling";
-
 function readSampling() {
   try {
     return JSON.parse(localStorage.getItem(SAMPLING_KEY) || "{}");
@@ -125,7 +124,15 @@ function PygmalionChat() {
   const repoId = chat?.repo_id || model?.repo_id;
   const modelName = chat?.model_name || model?.name;
   const ready = status?.state === "ready" && status?.model === repoId;
-  const live = ready ? status.detail : model?.state === "downloading" ? model.detail : model?.download_state === "downloaded" ? "Downloaded · loads on the first message" : model?.detail;
+  const live = ready
+    ? `Ready on ${status.device}`
+    : status?.model === repoId && status?.state === "loading"
+      ? "Loading…"
+      : model?.state === "downloading"
+        ? model.detail
+        : model?.download_state === "downloaded"
+          ? "Downloaded · loads on the first message"
+          : model?.detail;
 
   const startFresh = (nextSoul, nextModel) => {
     setChat(null);
@@ -149,7 +156,7 @@ function PygmalionChat() {
     try {
       const target = chat || (created = await createChat(soul.slug, model.id));
       const result = await sendMessage(target.id, text, readSampling());
-      setTrace({ prompt: result.prompt, memories: result.memories, sections: result.soul_sections });
+      setTrace({ prompt: result.prompt, memories: result.memories, sections: result.soul_sections, options: result.options || [] });
       announceChatChange();
       if (created) {
         setChat({ ...created, messages: [result.message, result.reply] });
@@ -175,7 +182,6 @@ function PygmalionChat() {
     <div className={styles.layout}>
       <section className={styles.chat}>
         <div className={styles.chatHeader}>
-          <h2>{name}</h2>
           <select
             className={styles.picker}
             aria-label="Figure"
@@ -202,7 +208,7 @@ function PygmalionChat() {
               </option>
             ))}
           </select>
-          <span>{modelName ? `${modelName} · ${live || "Checking the model…"}` : ""}</span>
+          <span>{modelName ? live || "Checking the model…" : ""}</span>
           <button type="button" className="btn btn--sm btn--ghost" onClick={() => startFresh()} disabled={busy || !chat}>
             New chat
           </button>
@@ -240,8 +246,9 @@ function PygmalionChat() {
                 {trace.memories.length
                   ? `Recalled ${trace.memories.length} earlier exchange${trace.memories.length === 1 ? "" : "s"}`
                   : "No earlier exchanges recalled"}
-                {" · prompt"}
+                {` · ${trace.options?.length || 0} options · prompt`}
               </summary>
+              {trace.options?.length > 0 && <pre>{JSON.stringify(trace.options, null, 2)}</pre>}
               {trace.memories.length > 0 && (
                 <ul>
                   {trace.memories.map((memory, index) => (

@@ -12,4 +12,5 @@ urlpatterns = [
     path('souls/', views.SoulListView.as_view(), name='forge-souls'),
     path('souls/<str:slug>/', views.SoulDetailView.as_view(), name='forge-soul'),
     path('model/', views.ModelView.as_view(), name='forge-model'),
+    path('huggingface/', views.HuggingFaceView.as_view(), name='forge-huggingface'),
 ]

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { createModel, downloadModel, listModels, loadRegisteredModel } from '../api/forge';
+import { createModel, downloadModel, listModels, loadRegisteredModel, saveHuggingFaceToken, uninstallModel } from '../api/forge';
 import styles from '../components/Section.module.css';
 
-const DEFAULTS = { max_new_tokens: 120, temperature: 0.8, top_p: 0.9, repetition_penalty: 1.1 };
+const DEFAULTS = { max_new_tokens: 48, temperature: 0.7, top_p: 0.9, repetition_penalty: 1.15 };
 const STORAGE_KEY = 'basalisk.modelSampling';
 
 const FIELDS = [
@@ -39,6 +39,7 @@ export default function Model() {
   const [sampling, setSampling] = useState(readSampling);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [token, setToken] = useState('');
 
   useEffect(() => {
     if (!modelId) {
@@ -106,6 +107,33 @@ export default function Model() {
     }
   };
 
+  const saveToken = async (event) => {
+    event.preventDefault();
+    const value = token.trim();
+    if (!value) return;
+    try {
+      await saveHuggingFaceToken(value);
+      setToken('');
+      const result = await downloadModel(record.id);
+      if (result && result.id) setRecord((current) => ({ ...current, ...result }));
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const uninstall = async () => {
+    if (!window.confirm(`Remove the downloaded weights for ${record.name}?`)) return;
+    try {
+      const result = await uninstallModel(record.id);
+      if (result && result.id) setRecord((current) => ({ ...current, ...result }));
+      setNote('');
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const changeSampling = (key, value) => {
     const next = { ...sampling, [key]: Number(value) };
     setSampling(next);
@@ -115,7 +143,8 @@ export default function Model() {
   const state = record?.state || 'catalog';
   const dotClass = state === 'ready' ? styles.dotReady : state === 'downloaded' ? styles.dotDownloaded : state === 'loading' || state === 'downloading' ? styles.dotLoading : state === 'error' ? styles.dotError : '';
   const loading = state === 'loading';
-  const showDownload = record && !loading && (record.download_state === 'downloading' || record.download_state === 'downloaded');
+  const downloaded = record?.download_state === 'downloaded';
+  const downloading = record?.download_state === 'downloading';
 
   return (
     <div className={styles.page}>
@@ -161,7 +190,7 @@ export default function Model() {
                 </div>
               </div>
             )}
-            {showDownload && (
+            {downloading && (
               <div className={styles.meterRow}>
                 <div
                   className={styles.meter}
@@ -180,9 +209,31 @@ export default function Model() {
             <p className={styles.lead}>Parameters: {record.parameters || 'unknown'}</p>
             <p className={styles.lead}>Context: {record.context_tokens} tokens{record.device ? ` · ${record.device}` : ''}</p>
             {record.notes && <p className={styles.lead}>{record.notes}</p>}
+            {record.download_needs_token && (
+              <form className={styles.stack} onSubmit={saveToken}>
+                <p className={styles.noteError}>Log in to Hugging Face and paste an access token.</p>
+                <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer">huggingface.co/settings/tokens</a>
+                <input
+                  className="field"
+                  type="password"
+                  autoComplete="off"
+                  aria-label="Hugging Face token"
+                  placeholder="hf_…"
+                  value={token}
+                  onChange={(event) => setToken(event.target.value)}
+                />
+                <button type="submit" className="btn btn--sm" disabled={!token.trim()}>Save token</button>
+              </form>
+            )}
             <div className={styles.actions}>
-              <button type="button" className="btn btn--sm" onClick={() => run('download')} disabled={record.download_state === 'downloading'}>Download</button>
-              <button type="button" className="btn btn--sm" onClick={() => run('load')} disabled={loading}>Load</button>
+              {downloaded ? (
+                <>
+                  <button type="button" className="btn btn--sm" onClick={() => run('load')} disabled={loading}>Load</button>
+                  <button type="button" className="btn btn--sm btn--ghost" onClick={uninstall}>Uninstall</button>
+                </>
+              ) : (
+                <button type="button" className="btn btn--sm" onClick={() => run('download')} disabled={downloading}>Download</button>
+              )}
               {note && <span className={styles.note}>{note}</span>}
               {error && <span className={styles.noteError}>{error}</span>}
             </div>

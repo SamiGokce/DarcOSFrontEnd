@@ -6,6 +6,7 @@ owns the download so a multi-gigabyte fetch does not run inside the web server.
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -108,6 +109,22 @@ def note_size(repo_id, total, done):
         _flush(repo_id)
 
 
+def remove(repo_id):
+    """Delete a model's downloaded weights. Refuses while a download is running."""
+    if snapshot(repo_id)['state'] == 'downloading':
+        raise DownloadBusy(repo_id)
+    folder = _cache_folder(repo_id)
+    if folder.is_dir():
+        shutil.rmtree(folder)
+    locks = Path(HF_HUB_CACHE) / '.locks' / folder.name
+    if locks.is_dir():
+        shutil.rmtree(locks)
+    for path in (_status_path(repo_id), _status_path(repo_id).with_suffix('.log')):
+        path.unlink(missing_ok=True)
+    with _lock:
+        _jobs.pop(repo_id, None)
+
+
 def finish(repo_id):
     with _lock:
         job = _jobs.get(repo_id)
@@ -119,8 +136,23 @@ def finish(repo_id):
         _flush(repo_id, force=True)
 
 
+TOKEN_MESSAGE = 'Log in to Hugging Face and paste an access token.'
+
+
+def asks_for_token(exc) -> bool:
+    """Hugging Face answers gated and private repos by asking for a login."""
+    if type(exc).__name__ in {'GatedRepoError', 'LocalTokenNotFoundError'}:
+        return True
+    status_code = getattr(getattr(exc, 'response', None), 'status_code', None)
+    if status_code in (401, 403):
+        return True
+    text = str(exc).lower()
+    return any(phrase in text for phrase in ('gated repo', 'unauthorized', 'access token', 'authenticate'))
+
+
 def fail(repo_id, exc):
-    message = f'{type(exc).__name__}: {exc}'
+    auth = asks_for_token(exc)
+    message = TOKEN_MESSAGE if auth else f'{type(exc).__name__}: {exc}'
     if len(message) > 300:
         message = message[:297] + '…'
     logger.exception('Download failed for %s', repo_id)
@@ -129,6 +161,7 @@ def fail(repo_id, exc):
         if not job:
             return
         job['state'] = 'error'
+        job['needs_token'] = auth
         job['detail'] = message
         _flush(repo_id, force=True)
 
@@ -140,7 +173,8 @@ def _run(repo_id):
         from huggingface_hub import HfApi, snapshot_download, try_to_load_from_cache
         import huggingface_hub.utils.tqdm  # noqa: F401  loads the module; the package attribute is the class
 
-        files = [item for item in HfApi().list_repo_tree(repo_id, recursive=True) if hasattr(item, 'size')]
+        token = read_token() or None
+        files = [item for item in HfApi(token=token).list_repo_tree(repo_id, recursive=True) if hasattr(item, 'size')]
         total = sum(item.size or 0 for item in files)
         done = 0
         for item in files:
@@ -165,7 +199,7 @@ def _run(repo_id):
 
         hf_tqdm.tqdm = TrackingTqdm
         try:
-            snapshot_download(repo_id)
+            snapshot_download(repo_id, token=token)
         finally:
             hf_tqdm.tqdm = original
         finish(repo_id)
@@ -207,6 +241,31 @@ def _flush(repo_id, force=False):
         return
     job['_flushed'] = now
     _write_file(job)
+
+
+def token_path():
+    override = os.environ.get('BASALISK_TOKEN_FILE')
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parent.parent / 'var' / 'hf_token'
+
+
+def read_token() -> str:
+    path = token_path()
+    if not path.is_file():
+        return ''
+    return path.read_text().strip()
+
+
+def save_token(token: str):
+    path = token_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token.strip() + '\n')
+    path.chmod(0o600)
+
+
+def signed_in() -> bool:
+    return bool(read_token())
 
 
 def _status_dir():
@@ -266,8 +325,12 @@ def _is_active(job):
     return True
 
 
+def _cache_folder(repo_id):
+    return Path(HF_HUB_CACHE) / ('models--' + repo_id.replace('/', '--'))
+
+
 def _weights_cached(repo_id):
-    folder = Path(HF_HUB_CACHE) / ('models--' + repo_id.replace('/', '--')) / 'snapshots'
+    folder = _cache_folder(repo_id) / 'snapshots'
     if not folder.is_dir():
         return False
     for path in folder.rglob('*'):
@@ -300,4 +363,5 @@ def _view(state, percent, done, total, detail, repo_id=''):
         'done': done,
         'total': total,
         'detail': detail,
+        'needs_token': False,
     }
