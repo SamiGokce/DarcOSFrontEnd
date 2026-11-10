@@ -17,16 +17,16 @@ def tokenize(text: str) -> list[str]:
     return [word for word in _WORD.findall(text.lower()) if word not in STOPWORDS]
 
 
-def rank(query: str, documents: list[str], k: int = 3, k1: float = 1.5, b: float = 0.75) -> list[int]:
-    """Indices of the `k` documents that best match `query`, best first. Documents with no overlap are skipped."""
+def scores(query: str, documents: list[str], k1: float = 1.5, b: float = 0.75) -> list[float]:
+    """BM25 score of each document. A document with no shared word scores 0."""
     terms = set(tokenize(query))
     if not terms or not documents:
-        return []
+        return [0.0] * len(documents)
     bags = [Counter(tokenize(doc)) for doc in documents]
     lengths = [sum(bag.values()) for bag in bags]
     average = (sum(lengths) / len(lengths)) or 1.0
     count = len(documents)
-    scores = []
+    result = []
     for index, bag in enumerate(bags):
         score = 0.0
         for term in terms:
@@ -37,10 +37,17 @@ def rank(query: str, documents: list[str], k: int = 3, k1: float = 1.5, b: float
             idf = math.log(1 + (count - holding + 0.5) / (holding + 0.5))
             norm = frequency + k1 * (1 - b + b * lengths[index] / average)
             score += idf * frequency * (k1 + 1) / norm
-        if score > 0:
-            scores.append((score, index))
-    scores.sort(key=lambda item: (-item[0], item[1]))
-    return [index for _, index in scores[:k]]
+        result.append(score)
+    return result
+
+
+def rank(query: str, documents: list[str], k: int = 3, k1: float = 1.5, b: float = 0.75) -> list[int]:
+    """Indices of the `k` documents that best match `query`, best first. Documents with no overlap are skipped."""
+    ordered = sorted(
+        ((score, index) for index, score in enumerate(scores(query, documents, k1, b)) if score > 0),
+        key=lambda item: (-item[0], item[1]),
+    )
+    return [index for _, index in ordered[:k]]
 
 
 def soul_sections(markdown: str) -> list[dict]:

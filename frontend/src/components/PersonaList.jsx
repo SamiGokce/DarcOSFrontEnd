@@ -40,7 +40,7 @@ export function FigureRows({ base }) {
           className={soul.slug === selected ? `${bar.link} ${bar.linkActive}` : bar.link}
         >
           <span className={bar.linkName}>{soul.name}</span>
-          <span className={bar.linkMeta}>{soul.file}</span>
+          <span className={bar.linkMeta}>{soul.person?.occupation || 'Profile'}</span>
         </NavLink>
       ))}
       {souls.length === 0 && !error && <div className={bar.linkMeta}>No figures yet.</div>}

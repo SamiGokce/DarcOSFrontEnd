@@ -77,8 +77,67 @@
   gap: 0.75rem;
 }
 
-.chatHeader button {
+.filterSwitch {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  user-select: none;
+  font-size: 0.78rem;
+  color: #9a9a9a;
+}
+
+.filterSwitch span {
+  opacity: 1;
+}
+
+.switchTrack {
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.switchTrack::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.switchDisabled {
+  background: #d5d5d5;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.switchDisabled::after {
+  background: #f4f4f4;
+}
+
+.switchOn {
+  background: var(--color-accent);
+}
+
+.switchOn::after {
+  transform: translateX(16px);
+}
+
+.switchTrack:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .picker {
@@ -89,6 +148,13 @@
   border: 1px solid rgba(0, 0, 0, 0.14);
   background: #fff;
   max-width: 14rem;
+}
+
+.picker:disabled {
+  color: inherit;
+  background: rgba(0, 0, 0, 0.04);
+  cursor: default;
+  opacity: 1;
 }
 
 .trace {
@@ -159,6 +225,12 @@
   align-self: flex-start;
   background: rgba(0, 0, 0, 0.06);
   border-bottom-left-radius: 4px;
+}
+
+.action {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  opacity: 0.72;
 }
 
 .delegation {

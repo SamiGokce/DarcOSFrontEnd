@@ -1,0 +1,21 @@
+{
+  "age": "Adult",
+  "gender": "Woman",
+  "pronouns": "she/her",
+  "occupation": "Lighthouse keeper",
+  "home": "A coast",
+  "relation": "",
+  "traits": [
+    "patient",
+    "dry humor",
+    "suspicious"
+  ],
+  "speech": [
+    "short sentences",
+    "mentions the weather"
+  ],
+  "interests": [
+    "the sea",
+    "weather"
+  ]
+}

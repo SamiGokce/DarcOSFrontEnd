@@ -11,6 +11,17 @@
   color: var(--color-text-muted);
 }
 
+.prompt {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .split {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
@@ -139,6 +150,102 @@
   min-height: 60vh;
   resize: vertical;
   line-height: 1.55;
+}
+
+.editorFile {
+  min-height: 16rem;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.sectionTitle {
+  margin: 0.4rem 0 0;
+  font-size: 1rem;
+}
+
+.memories {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.memory {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.preview {
+  min-height: 16rem;
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+  line-height: 1.6;
+}
+
+.preview h2,
+.preview h3,
+.preview h4 {
+  margin: 0.9rem 0 0.3rem;
+  font-size: 1rem;
+}
+
+.preview p,
+.preview ul {
+  margin: 0 0 0.6rem;
+}
+
+.preview ul {
+  padding-left: 1.2rem;
+}
+
+.preview code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.control {
+  font-family: inherit;
+}
+
+.multi {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.multi legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.choice,
+.choiceOn {
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+  color: inherit;
+}
+
+.choiceOn {
+  border-color: #5b4ee3;
+  background: rgba(91, 78, 227, 0.16);
+  color: #4336c9;
 }
 
 .dotDownloaded {

@@ -1,15 +1,17 @@
 import os
+import json
+import re
 import tempfile
 from unittest import mock
 
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from . import downloads, rag, souls
+from . import downloads, embed, gate, person, prompt, rag, souls
 from .llm import engine
 from .models import Chat, LanguageModel
 from .llm import weights_missing
-from .prompt import build_prompt, clean_reply, is_unfinished, render_reply
+from .prompt import build_prompt, clean_reply, decode_prompt, is_unfinished, render_reply
 
 SOUL = """# Mira
 
@@ -67,6 +69,21 @@ class SoulStoreTests(SoulDirMixin, TestCase):
     def test_no_figure_is_seeded(self):
         self.assertEqual(souls.list_souls(), [])
 
+    def test_person_details_keep_only_known_choices(self):
+        soul = souls.create('Mira')
+        saved = souls.write_person(soul['slug'], {
+            'occupation': 'Sailor',
+            'age': 'Dragon',
+            'traits': ['warm', 'invented'],
+            'notes': 'typed by hand',
+        })
+        self.assertEqual(saved['occupation'], 'Sailor')
+        self.assertEqual(saved['age'], '')
+        self.assertEqual(saved['traits'], ['warm'])
+        self.assertNotIn('notes', saved)
+        self.assertIn('Occupation: Sailor', person.with_person(soul['content'], saved))
+        self.assertIn('Traits: warm', person.with_person(soul['content'], saved))
+
 
 class RagTests(TestCase):
     def test_rank_prefers_documents_sharing_rare_words(self):
@@ -93,6 +110,24 @@ class RagTests(TestCase):
 
 
 class PromptTests(TestCase):
+    def test_the_persona_tag_is_short_in_the_card_and_the_prompt(self):
+        from .prompt import prompt_json, shorten_tags
+        neox = "[CHARACTER]'s Persona: [A few sentences about the character you want the model to play]\n[CHARACTER]:"
+        self.assertEqual(shorten_tags(neox), "[CHARACTER]'s Persona: [PERSONA]\n[CHARACTER]:")
+        document = prompt_json(neox, character='Mira', persona='A lighthouse keeper.', dialogue_history='', message='')
+        self.assertIn('[PERSONA]', document['tags'])
+        self.assertNotIn('[A few sentences', document['template'])
+        self.assertEqual(decode_prompt(document), "Mira's Persona: A lighthouse keeper.\nMira:")
+
+    def test_kmt_finds_exact_tags_and_keeps_going_after_a_mismatch(self):
+        from .prompt import kmt_find
+        # The classic overlap case: the match shares its own prefix, at index 10.
+        self.assertEqual(kmt_find('ABABDABACDABABCABAB', 'ABABCABAB'), [10])
+        card = "[CHARACTER]'s Persona: [A few sentences about the character you want the model to play]\n[CHARACTER]:"
+        self.assertEqual(kmt_find(card, '[CHARACTER]'), [0, card.rfind('[CHARACTER]')])
+        self.assertEqual(kmt_find('{{character}}', '{{char}}'), [])
+        self.assertEqual(kmt_find('{{char}}', '{{char}}'), [0])
+
     def test_short_chat_uses_the_whole_soul_and_recent_turns(self):
         prompt = build_prompt('Mira', SOUL, [{'role': 'you', 'content': 'Hello.'}])
         lines = prompt.text.splitlines()
@@ -100,6 +135,51 @@ class PromptTests(TestCase):
         self.assertIn('Garden: She grows tomatoes in a cracked bathtub behind the lighthouse.', prompt.text)
         self.assertEqual(lines[-3:], ['<START>', 'You: Hello.', 'Mira:'])
         self.assertEqual(prompt.memories, [])
+
+    def test_a_model_card_fills_character_persona_and_dialogue_from_the_figure(self):
+        neox = (
+            "[CHARACTER]'s Persona: [A few sentences about the character you want the model to play]\n"
+            '\n'
+            '[DIALOGUE HISTORY]\n'
+            'You: [Your input message here]\n'
+            '[CHARACTER]:'
+        )
+        neo = neox.replace('\n\n[DIALOGUE HISTORY]', '\n<START>\n[DIALOGUE HISTORY]')
+        turns = [
+            {'role': 'character', 'content': 'The lamp is lit.'},
+            {'role': 'you', 'content': 'What is your occupation?'},
+        ]
+        filled = build_prompt('Mira', SOUL, turns, template=neox)
+        self.assertIn("Mira's Persona:", filled.text)
+        self.assertIn('A lighthouse keeper', filled.text)
+        self.assertIn('Mira: The lamp is lit.', filled.text)
+        self.assertNotIn('[CHARACTER]', filled.text)
+        self.assertNotIn('[DIALOGUE HISTORY]', filled.text)
+        self.assertNotIn('[Your input message here]', filled.text)
+        self.assertNotIn('<START>', filled.text)
+        self.assertTrue(filled.text.endswith('You: What is your occupation?\nMira:'))
+        self.assertEqual(filled.text.count('What is your occupation?'), 1)
+        self.assertEqual(filled.document['data']['character'], 'Mira')
+        self.assertEqual(filled.document['data']['message'], 'What is your occupation?')
+        self.assertIn('The lamp is lit.', filled.document['data']['dialogue_history'])
+        self.assertIn('[CHARACTER]', filled.document['tags'])
+        self.assertEqual(decode_prompt(json.loads(json.dumps(filled.document))), filled.text)
+        with_start = build_prompt('Mira', SOUL, [{'role': 'you', 'content': 'Hello.'}], template=neo)
+        self.assertIn('<START>', with_start.text)
+        self.assertNotIn('Hello.\nYou: Hello.', with_start.text)
+
+    def test_a_pygmalion_2_card_fills_the_figure_and_keeps_the_role_turn(self):
+        template = (
+            '<|system|>Enter RP mode. Pretend to be {{char}} whose persona follows:\n'
+            '{{persona}}\n\n'
+            'You shall reply to the user while staying in character, and generate long responses.'
+        )
+        filled = build_prompt('Mira', 'A lighthouse keeper.', [{'role': 'you', 'content': 'Hello.'}], template=template)
+        self.assertIn('Pretend to be Mira whose persona follows:', filled.text)
+        self.assertIn('A lighthouse keeper.', filled.text)
+        self.assertNotIn('{{char}}', filled.text)
+        self.assertNotIn('{{persona}}', filled.text)
+        self.assertTrue(filled.text.endswith('<|user|>Hello.\n<|model|>'))
 
     def test_older_turns_are_recalled_when_they_match(self):
         history = [
@@ -112,10 +192,37 @@ class PromptTests(TestCase):
                 {'role': 'character', 'content': 'Mm.'},
             ]
         history.append({'role': 'you', 'content': 'Remind me, which boat did Tomas take?'})
-        prompt = build_prompt('Mira', SOUL, history)
+
+        def encoder(texts):
+            vectors = []
+            for text in texts:
+                low = text.lower()
+                vectors.append([1.0, 0.0] if 'boat' in low or 'tomas' in low or 'brother' in low else [0.0, 1.0])
+            return vectors
+
+        embed.encoder = encoder
+        try:
+            prompt = build_prompt('Mira', SOUL, history)
+        finally:
+            embed.encoder = None
         self.assertEqual(prompt.memories, ['You: What is your brother called?\nMira: Tomas. He took the red boat.'])
         self.assertIn('Memory:\nYou: What is your brother called?', prompt.text)
         self.assertNotIn('You: Small talk 0.', prompt.text)
+
+    def test_the_person_facts_survive_a_long_chat(self):
+        long = ' '.join(['the fog hung over the rocks and the cold grey sea all night long'] * 12)
+        history = []
+        for index in range(8):
+            history += [
+                {'role': 'you', 'content': f'Tell me about day {index}. {long}'},
+                {'role': 'character', 'content': f'Day {index} was cold. {long}'},
+            ]
+        history.append({'role': 'you', 'content': 'what do you do for a living'})
+        persona = person.with_person(SOUL, {'occupation': 'Lighthouse keeper', 'gender': 'Woman'})
+        prompt = build_prompt('Mira', persona, history, count_tokens=lambda text: len(text) // 4, budget=700)
+        self.assertIn('Occupation: Lighthouse keeper', prompt.text)
+        self.assertIn('Gender: Woman', prompt.text)
+        self.assertIn('Person', prompt.soul_sections)
 
     def test_a_long_soul_keeps_its_opening_and_the_matching_sections(self):
         history = [{'role': 'you', 'content': 'Tell me about the tomatoes.'}]
@@ -127,7 +234,7 @@ class PromptTests(TestCase):
 
     def test_clean_reply_stops_at_the_next_speaker(self):
         raw = ' The light is on. *nods*\nYou: And then?\nMira: Then nothing.'
-        self.assertEqual(clean_reply(raw, 'Mira'), 'The light is on. *nods*')
+        self.assertEqual(clean_reply(raw, 'Mira'), 'The light is on.')
 
     def test_a_flag_is_replaced_from_its_definition(self):
         raw = ' Hello <USER>. Your vessel seems lovely today! So what brings you here?'
@@ -142,6 +249,42 @@ class PromptTests(TestCase):
         self.assertEqual([item['rank'] for item in parsed['options']], [1, 2])
         self.assertEqual(parsed['options'][1]['text'], 'Go ahead and enjoy yourself.')
         self.assertEqual(parsed['options'][1]['flags'][0]['name'], 'CONTINUE')
+
+    def test_asterisk_beats_become_action_tags(self):
+        raw = 'Hello. *She is surprised by your forwardness.* **leans closer**'
+        parsed = render_reply(raw, 'Mira')
+        self.assertEqual(parsed['options'][0]['actions'], [
+            {'tag': '[ACTION]', 'text': 'She is surprised by your forwardness.', 'at': 6},
+            {'tag': '[ACTION]', 'text': 'leans closer', 'at': 6},
+        ])
+        self.assertEqual(parsed['options'][0]['text'], 'Hello.')
+        self.assertNotIn('*', parsed['options'][0]['text'])
+
+    def test_a_beat_keeps_its_place_in_the_sentence(self):
+        parsed = render_reply('Hi *waves* there. *nods* Bye.', 'Mira')
+        self.assertEqual(parsed['options'][0]['text'], 'Hi there. Bye.')
+        self.assertEqual(parsed['options'][0]['actions'], [
+            {'tag': '[ACTION]', 'text': 'waves', 'at': 2},
+            {'tag': '[ACTION]', 'text': 'nods', 'at': 9},
+        ])
+
+    def test_a_broken_start_mark_is_cut_out_of_the_reply(self):
+        raw = "I don't think you can get any more sexist than that. <START* pats your back*"
+        parsed = render_reply(raw, 'Mira')
+        self.assertEqual(parsed['options'][0]['text'], "I don't think you can get any more sexist than that.")
+        self.assertNotIn('<START', parsed['options'][0]['text'])
+        closed = render_reply("The lamp is lit.\n<START>\nYou: hi", 'Mira')
+        self.assertEqual(closed['options'][0]['text'], 'The lamp is lit.')
+
+    def test_the_safety_filter_drops_flagged_options_and_reranks(self):
+        raw = 'The lighthouse is lit.\n\n\nThe kelp is wet.'
+        neutral = re.compile(r'\bkelp\b', re.IGNORECASE)
+        with mock.patch.object(prompt, 'EXPLICIT', neutral):
+            filtered = render_reply(raw, 'Mira', {}, safety_filter=True)
+            unfiltered = render_reply(raw, 'Mira', {}, safety_filter=False)
+        self.assertEqual([item['text'] for item in filtered['options']], ['The lighthouse is lit.'])
+        self.assertEqual([item['rank'] for item in filtered['options']], [1])
+        self.assertEqual(len(unfiltered['options']), 2)
 
     def test_blank_lines_are_separate_reply_options(self):
         raw = (
@@ -176,10 +319,122 @@ class PromptTests(TestCase):
 class ChatApiTests(SoulDirMixin, TestCase):
     def setUp(self):
         super().setUp()
+        embed._cache.clear()
+        embed.keyword_generator = lambda text: text
+        embed.variation_generator = lambda text: []
+        embed.encoder = lambda texts: [[0.0] for _text in texts]
+        gate.scorer = lambda text: 1.0 if text.startswith('BLOCKED') else 0.0
         self.client = APIClient()
         self.soul = souls.save(souls.create('Mira')['slug'], SOUL)
         self.small = LanguageModel.objects.create(name='Tiny', repo_id='org/tiny', parameters='70M')
         self.large = LanguageModel.objects.create(name='Large', repo_id='org/large', parameters='6B')
+
+    def tearDown(self):
+        embed.keyword_generator = None
+        embed.variation_generator = None
+        embed.encoder = None
+        gate.scorer = None
+        embed._cache.clear()
+        super().tearDown()
+
+    def test_a_downloaded_model_card_is_read_from_its_config(self):
+        from .downloads import model_card
+        card = {row['label']: row['value'] for row in model_card('PygmalionAI/pygmalion-1.3b')}
+        self.assertEqual(card['Architecture'], 'GPTNeoXForCausalLM')
+        self.assertEqual(card['Model type'], 'gpt_neox')
+        self.assertEqual(card['Vocabulary'], 50304)
+        self.assertEqual(card['Tokenizer'], 'GPTNeoXTokenizer')
+        self.assertEqual(model_card('org/not-a-model'), [])
+
+    def test_the_prompt_structure_comes_from_each_model_card(self):
+        from .downloads import prompt_structure
+        small = prompt_structure('PygmalionAI/pygmalion-350m')
+        neox = prompt_structure('PygmalionAI/pygmalion-1.3b')
+        neo = prompt_structure('PygmalionAI/pygmalion-2.7b')
+        metharme = prompt_structure('PygmalionAI/pygmalion-2-7b')
+        self.assertEqual(small, '')
+        self.assertIn("[CHARACTER]'s Persona:", neox)
+        self.assertNotIn('<START>', neox)
+        self.assertIn('<START>', neo)
+        self.assertIn('<|system|>', metharme)
+        self.assertIn('{{persona}}', metharme)
+
+    def test_models_are_listed_smallest_first_by_parameter_count(self):
+        LanguageModel.objects.create(name='Pygmalion 2.7B', repo_id='org/2p7', parameters='2.7B')
+        LanguageModel.objects.create(name='Pygmalion 1.3B', repo_id='org/1p3', parameters='1.3B')
+        LanguageModel.objects.create(name='Pygmalion 350M', repo_id='org/350', parameters='350M')
+        response = self.client.get('/api/forge/models/')
+        self.assertEqual(response.status_code, 200)
+        from . import views
+        sizes = [row['parameters'] for row in response.json()]
+        self.assertIn('350M', sizes)
+        self.assertEqual(sizes, sorted(sizes, key=views.parameter_count))
+        self.assertEqual(sizes[0], '70M')
+        self.assertEqual(sizes[-1], '6B')
+
+    def test_the_prompt_carries_the_earlier_turns_then_the_new_message(self):
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready'), \
+                mock.patch.object(engine, 'generate', return_value=' Noted.') as generate:
+            self.client.post(f"/api/forge/chats/{chat['id']}/messages/", {'content': 'Tell me about the tomatoes.'}, format='json')
+            response = self.client.post(f"/api/forge/chats/{chat['id']}/messages/", {'content': 'And the weather?'}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        prompt = response.json()['prompt']
+        self.assertIn('Mira: Noted.', prompt)
+        self.assertTrue(prompt.endswith('You: And the weather?\nMira:'))
+        self.assertNotIn('You: Tell me about the tomatoes.', prompt)
+        self.assertEqual(response.json()['recall']['kind'], 'semantic')
+        self.assertEqual(generate.call_args.args[0], prompt)
+
+    def test_the_first_message_has_no_earlier_turns(self):
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready'), \
+                mock.patch.object(engine, 'generate', return_value=' Noted.'):
+            response = self.client.post(f"/api/forge/chats/{chat['id']}/messages/", {'content': 'Hello.'}, format='json')
+        self.assertTrue(response.json()['prompt'].endswith('<START>\nYou: Hello.\nMira:'))
+
+    def test_asterisk_beats_are_stored_on_a_stack(self):
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready'), \
+                mock.patch.object(engine, 'generate', return_value=' *She is surprised by your forwardness.*'):
+            response = self.client.post(
+                f"/api/forge/chats/{chat['id']}/messages/",
+                {'content': '*waves* Hello.'},
+                format='json',
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual(body['message']['content'], 'Hello.')
+        self.assertEqual(body['message']['actions'], [{'tag': '[ACTION]', 'text': 'waves', 'at': 0, 'role': 'you'}])
+        self.assertEqual(body['reply']['content'], '')
+        self.assertEqual(body['reply']['actions'][0]['text'], 'She is surprised by your forwardness.')
+        self.assertEqual(
+            [item['text'] for item in body['action_stack']],
+            ['waves', 'She is surprised by your forwardness.'],
+        )
+        self.assertEqual(body['action_stack'][-1]['role'], 'character')
+
+    def test_the_filter_is_off_even_when_a_message_asks_for_it(self):
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready'), \
+                mock.patch.object(engine, 'generate', return_value=' Noted.') as generate:
+            response = self.client.post(
+                f"/api/forge/chats/{chat['id']}/messages/",
+                {'content': 'BLOCKED test message', 'safety_filter': True}, format='json',
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        generate.assert_called()
+
+    def test_the_gate_is_skipped_when_the_filter_is_off(self):
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready'), \
+                mock.patch.object(engine, 'generate', return_value=' Noted.') as generate:
+            response = self.client.post(
+                f"/api/forge/chats/{chat['id']}/messages/",
+                {'content': 'BLOCKED test message', 'safety_filter': False}, format='json',
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        generate.assert_called()
 
     def _chat(self, model):
         response = self.client.post('/api/forge/chats/', {'soul': 'mira', 'model_id': model.id}, format='json')
@@ -190,10 +445,44 @@ class ChatApiTests(SoulDirMixin, TestCase):
         self.assertEqual([s['slug'] for s in self.client.get('/api/forge/souls/').json()], ['mira'])
         created = self.client.post('/api/forge/souls/', {'name': 'Orin'}, format='json')
         self.assertEqual(created.status_code, 201)
-        saved = self.client.put('/api/forge/souls/orin/', {'content': '# Orin\n\nA fox.'}, format='json')
+        saved = self.client.put('/api/forge/souls/orin/', {
+            'content': '# Orin\n\nA fox.',
+            'person': {'occupation': 'Scholar', 'traits': ['curious', 'nope']},
+        }, format='json')
         self.assertEqual(saved.json()['content'], '# Orin\n\nA fox.')
+        self.assertEqual(saved.json()['person']['occupation'], 'Scholar')
+        self.assertEqual(saved.json()['person']['traits'], ['curious'])
+        self.assertTrue(any(field['kind'] == 'select' for field in saved.json()['person_fields']))
         self.assertEqual(self.client.delete('/api/forge/souls/orin/').status_code, 204)
         self.assertEqual(self.client.get('/api/forge/souls/orin/').status_code, 404)
+
+    def test_a_figure_lists_every_exchange_it_can_remember(self):
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready'), \
+                mock.patch.object(engine, 'generate', return_value=' Noted.'):
+            self.client.post(f"/api/forge/chats/{chat['id']}/messages/", {'content': 'What is your boat called?'}, format='json')
+            self.client.post(f"/api/forge/chats/{chat['id']}/messages/", {'content': 'And the weather?'}, format='json')
+        response = self.client.get('/api/forge/souls/mira/memories/')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([row['text'] for row in response.json()], [
+            'You: What is your boat called?\nMira: Noted.',
+            'You: And the weather?\nMira: Noted.',
+        ])
+        self.assertEqual(response.json()[0]['model'], 'Tiny')
+        self.assertEqual(self.client.get('/api/forge/souls/missing/memories/').status_code, 404)
+
+    def test_an_occupation_question_is_answered_by_the_model(self):
+        souls.write_person('mira', {'occupation': 'Lighthouse keeper'})
+        chat = self._chat(self.small)
+        with mock.patch.object(engine, 'ensure_ready'), \
+                mock.patch.object(engine, 'generate', return_value=' I mend nets.') as generate:
+            response = self.client.post(
+                f"/api/forge/chats/{chat['id']}/messages/", {'content': 'what is your occupation'}, format='json',
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['reply']['content'], 'I mend nets.')
+        self.assertIn('Occupation: Lighthouse keeper', response.json()['prompt'])
+        generate.assert_called()
 
     def test_each_model_gets_its_own_chat(self):
         small = self._chat(self.small)
@@ -461,3 +750,83 @@ class DownloadTests(TestCase):
         snap = downloads.snapshot('org/gone')
         self.assertEqual(snap['state'], 'error')
         self.assertEqual(snap['detail'], 'Download stopped.')
+
+
+class RecallTests(TestCase):
+    def setUp(self):
+        embed._cache.clear()
+        embed.keyword_generator = self._keywords
+        embed.variation_generator = self._variations
+        embed.encoder = lambda texts: [[0.0] for _text in texts]
+
+    def tearDown(self):
+        embed.keyword_generator = None
+        embed.variation_generator = None
+        embed.encoder = None
+        embed._cache.clear()
+
+    def _keywords(self, text):
+        lowered = text.lower()
+        if 'occupation' in lowered or 'lighthouse' in lowered or 'living' in lowered:
+            return 'occupation lighthouse'
+        if 'weather' in lowered or 'wind' in lowered:
+            return 'weather wind'
+        if 'age' in lowered or 'adult' in lowered:
+            return 'age adult'
+        return lowered
+
+    def _variations(self, text):
+        if 'living' in text.lower():
+            return ['what is your occupation', 'which job do you hold']
+        return []
+
+    def test_a_shared_word_finds_the_fact(self):
+        facts = {'occupation': 'Lighthouse keeper', 'age': 'Adult', 'home': 'A coast'}
+        chosen, scores = embed.best_fact('do you keep a lighthouse', facts)
+        self.assertEqual(chosen, 'occupation')
+        self.assertGreater(scores[0]['keyword'], 0)
+        self.assertEqual(scores[0]['semantic'], 0)
+
+    def test_semantic_search_finds_a_fact_the_keywords_miss(self):
+        embed.keyword_generator = lambda text: ''
+        embed.variation_generator = lambda text: []
+        vectors = {
+            'what is your job': [1.0, 0.0],
+            'Occupation: Lighthouse keeper': [1.0, 0.0],
+            'Age: Adult': [0.0, 1.0],
+        }
+        embed.encoder = lambda texts: [vectors[text.removeprefix(embed.QUERY_PREFIX)] for text in texts]
+        chosen, scores = embed.best_fact('what is your job', {'occupation': 'Lighthouse keeper', 'age': 'Adult'})
+        self.assertEqual(chosen, 'occupation')
+        self.assertEqual(scores[0]['keyword'], 0)
+        self.assertEqual(scores[0]['semantic'], 1)
+
+    def test_a_passage_that_matches_both_ways_ranks_first(self):
+        vectors = {
+            'lighthouse work': [1.0, 0.0],
+            'Occupation: Lighthouse keeper': [1.0, 0.0],
+            'Home: A coast': [0.4, 0.9],
+        }
+        embed.encoder = lambda texts: [vectors[text.removeprefix(embed.QUERY_PREFIX)] for text in texts]
+        chosen, scores = embed.best_fact('lighthouse work', {'occupation': 'Lighthouse keeper', 'home': 'A coast'})
+        self.assertEqual([row['key'] for row in scores], ['occupation', 'home'])
+        self.assertEqual(chosen, 'occupation')
+        self.assertGreater(scores[0]['keyword'], 0)
+        self.assertGreater(scores[0]['semantic'], scores[1]['semantic'])
+
+    def test_consistency_scores_the_reply_closest_to_the_top_fact(self):
+        vectors = {
+            'I play the guitar.': [0.0, 1.0],
+            'I am a lighthouse keeper.': [1.0, 0.0],
+            'Occupation: Lighthouse keeper': [1.0, 0.0],
+        }
+        embed.encoder = lambda texts: [vectors[text] for text in texts]
+        facts = [{'key': 'occupation', 'text': 'Occupation: Lighthouse keeper'}]
+        fit = embed.consistency(['I play the guitar.', 'I am a lighthouse keeper.'], facts)
+        self.assertEqual(fit, [0.0, 1.0])
+        self.assertEqual(embed.consistency(['I play the guitar.'], []), [0.0])
+
+    def test_an_unrelated_question_finds_no_fact(self):
+        facts = {'occupation': 'Lighthouse keeper', 'age': 'Adult'}
+        chosen, _scores = embed.best_fact('how is the weather', facts)
+        self.assertIsNone(chosen)

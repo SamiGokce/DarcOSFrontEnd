@@ -4,13 +4,70 @@ import { createChat, deleteChat, getChat, listModels, listSouls, modelStatus, se
 import { CHAT_CHANGED, SOUL_CHANGED, announceChatChange } from "../persona/store";
 import styles from "./Threads.module.css";
 
-const SAMPLING_KEY = "basalisk.modelSampling";
+const SAMPLING_KEY = "basalisk.modelSampling.v2";
 function readSampling() {
   try {
     return JSON.parse(localStorage.getItem(SAMPLING_KEY) || "{}");
   } catch {
     return {};
   }
+}
+
+// Same rules as forge/prompt.py split_actions: speech in order, each beat with `at`,
+// the number of spoken characters before it.
+function cleanPiece(text) {
+  return text.replace(/\s+/g, " ").trim().replace(/\s+([.!?…,])/g, "$1");
+}
+
+function joinPiece(spoken, piece) {
+  if (!piece) return spoken;
+  if (!spoken || /^[.!?…,]/.test(piece)) return spoken + piece;
+  return `${spoken} ${piece}`;
+}
+
+function splitActions(text) {
+  const actions = [];
+  const source = text || "";
+  let spoken = "";
+  let cursor = 0;
+  for (const match of source.matchAll(/\*\*([^*]+)\*\*|\*([^*]+)\*/g)) {
+    spoken = joinPiece(spoken, cleanPiece(source.slice(cursor, match.index)));
+    const beat = (match[1] || match[2] || "").trim();
+    if (beat) actions.push({ text: beat, at: spoken.length });
+    cursor = match.index + match[0].length;
+  }
+  spoken = joinPiece(spoken, cleanPiece(source.slice(cursor)));
+  return { spoken, actions };
+}
+
+// Speech and actions in the order they happened. Stored messages carry `at`;
+// older ones that still hold *beat* marks in their text are split here.
+function inOrder(content, actions) {
+  const positioned = (actions || []).length > 0 && actions.every((action) => typeof action.at === "number");
+  const legacy = !positioned && (content || "").includes("*");
+  const source = legacy ? splitActions(content) : { spoken: content || "", actions: actions || [] };
+  const segments = [];
+  let cursor = 0;
+  for (const action of source.actions) {
+    const at = Math.min(Math.max(action.at ?? source.spoken.length, cursor), source.spoken.length);
+    const before = source.spoken.slice(cursor, at).trim();
+    if (before) segments.push({ kind: "speech", text: before });
+    segments.push({ kind: "action", text: action.text });
+    cursor = at;
+  }
+  const rest = source.spoken.slice(cursor).trim();
+  if (rest) segments.push({ kind: "speech", text: rest });
+  return segments;
+}
+
+function Segments({ segments }) {
+  return segments.map((segment, index) =>
+    segment.kind === "action" ? (
+      <div key={index} className={styles.action}>[action] {segment.text}</div>
+    ) : (
+      <div key={index}>{segment.text}</div>
+    ),
+  );
 }
 
 function pickModel(models, status) {
@@ -42,6 +99,7 @@ function PygmalionChat() {
   const [trace, setTrace] = useState(null);
   const bottomRef = useRef(null);
   const createdRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     const read = () => listSouls().then(setSouls).catch((err) => setNotice(err.message));
@@ -155,8 +213,17 @@ function PygmalionChat() {
     let created = null;
     try {
       const target = chat || (created = await createChat(soul.slug, model.id));
-      const result = await sendMessage(target.id, text, readSampling());
-      setTrace({ prompt: result.prompt, memories: result.memories, sections: result.soul_sections, options: result.options || [] });
+      const result = await sendMessage(target.id, text, readSampling(), false);
+      setTrace({
+        prompt: result.prompt,
+        document: result.prompt_document,
+        memories: result.memories,
+        sections: result.soul_sections,
+        options: result.options || [],
+        candidates: result.candidates || [],
+        recall: result.recall,
+        actionStack: result.action_stack || [],
+      });
       announceChatChange();
       if (created) {
         setChat({ ...created, messages: [result.message, result.reply] });
@@ -172,6 +239,7 @@ function PygmalionChat() {
     } finally {
       setPending("");
       setBusy(false);
+      inputRef.current?.focus();
     }
   };
 
@@ -187,7 +255,8 @@ function PygmalionChat() {
             aria-label="Figure"
             value={soulSlug}
             onChange={(event) => startFresh(event.target.value, undefined)}
-            disabled={busy || souls.length === 0}
+            disabled={busy || souls.length === 0 || Boolean(chat)}
+            title={chat ? "This chat keeps the figure it started with. Start a new chat to change it." : "Figure for the next chat"}
           >
             {souls.length === 0 && <option value="">No figures</option>}
             {souls.map((item) => (
@@ -199,7 +268,8 @@ function PygmalionChat() {
             aria-label="Model"
             value={modelId}
             onChange={(event) => startFresh(undefined, event.target.value)}
-            disabled={busy || models.length === 0}
+            disabled={busy || models.length === 0 || Boolean(chat)}
+            title={chat ? "This chat keeps the model it started with. Start a new chat to change it." : "Model for the next chat"}
           >
             {models.length === 0 && <option value="">No models</option>}
             {models.map((item) => (
@@ -209,9 +279,18 @@ function PygmalionChat() {
             ))}
           </select>
           <span>{modelName ? live || "Checking the model…" : ""}</span>
-          <button type="button" className="btn btn--sm btn--ghost" onClick={() => startFresh()} disabled={busy || !chat}>
-            New chat
-          </button>
+          <div className={styles.filterSwitch}>
+            <span>Filter</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={false}
+              aria-label="Safety filter"
+              title="Filter is off"
+              className={`${styles.switchTrack} ${styles.switchDisabled}`}
+              disabled
+            />
+          </div>
         </div>
 
         <div className={styles.messages}>
@@ -225,16 +304,19 @@ function PygmalionChat() {
           )}
           {souls.length > 0 && !chat && !pending && (
             <div className={styles.empty}>
-              New chat with {name}{modelName ? ` on ${modelName}` : ""}. Each model gets its own chat, so switching models starts fresh.
-              Earlier turns are recalled by relevance once the chat grows.
+              New chat with {name}{modelName ? ` on ${modelName}` : ""}. The figure and the model stay with this chat once the first message is sent.
             </div>
           )}
           {messages.map((message) => (
             <div key={message.id} className={message.role === "you" ? styles.bubbleUser : styles.bubbleAgent}>
-              {message.content}
+              <Segments segments={inOrder(message.content, message.actions)} />
             </div>
           ))}
-          {pending && <div className={styles.bubbleUser}>{pending}</div>}
+          {pending && (
+            <div className={styles.bubbleUser}>
+              <Segments segments={inOrder(splitActions(pending).spoken, splitActions(pending).actions)} />
+            </div>
+          )}
           {busy && (
             <div className={styles.typing}>
               {phase === "load" ? `Loading ${modelName || "the model"}…` : `${name} is writing…`}
@@ -246,8 +328,20 @@ function PygmalionChat() {
                 {trace.memories.length
                   ? `Recalled ${trace.memories.length} earlier exchange${trace.memories.length === 1 ? "" : "s"}`
                   : "No earlier exchanges recalled"}
-                {` · ${trace.options?.length || 0} options · prompt`}
+                {` · ${trace.recall?.kind || "persona + message"} · ${trace.options?.length || 0} options · prompt`}
               </summary>
+              {trace.recall && (
+                <pre>
+                  {JSON.stringify(
+                    { scores: trace.recall.scores },
+                    null,
+                    2,
+                  )}
+                </pre>
+              )}
+              {trace.candidates?.length > 0 && (
+                <pre>{trace.candidates.map((item) => `fit ${item.fit}  ${item.text}`).join("\n")}</pre>
+              )}
               {trace.options?.length > 0 && <pre>{JSON.stringify(trace.options, null, 2)}</pre>}
               {trace.memories.length > 0 && (
                 <ul>
@@ -256,6 +350,8 @@ function PygmalionChat() {
                   ))}
                 </ul>
               )}
+              {trace.actionStack?.length > 0 && <pre>{JSON.stringify(trace.actionStack, null, 2)}</pre>}
+              {trace.document && <pre>{JSON.stringify({ tags: trace.document.tags, data: trace.document.data }, null, 2)}</pre>}
               <pre>{trace.prompt}</pre>
             </details>
           )}
@@ -265,11 +361,19 @@ function PygmalionChat() {
 
         <form className={styles.inputRow} onSubmit={send}>
           <input
+            ref={inputRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder={soul ? `Message ${soul.name}…` : "Message Basalisk…"}
             aria-label="chat input"
-            disabled={busy || !soul || !model}
+            disabled={!soul || !model}
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                send(event);
+              }
+            }}
           />
           <button type="submit" className={`btn btn--sm ${styles.sendBtn}`} disabled={busy || !soul || !model}>
             Send

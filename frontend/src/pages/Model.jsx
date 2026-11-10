@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { createModel, downloadModel, listModels, loadRegisteredModel, saveHuggingFaceToken, uninstallModel } from '../api/forge';
+import { createModel, downloadModel, listModels, loadRegisteredModel, modelCard, saveHuggingFaceToken, uninstallModel } from '../api/forge';
 import styles from '../components/Section.module.css';
 
-const DEFAULTS = { max_new_tokens: 48, temperature: 0.7, top_p: 0.9, repetition_penalty: 1.15 };
-const STORAGE_KEY = 'basalisk.modelSampling';
+const DEFAULTS = { max_new_tokens: 48, temperature: 0.5, top_p: 0.9, repetition_penalty: 1.0 };
+const STORAGE_KEY = 'basalisk.modelSampling.v2';
 
 const FIELDS = [
   ['max_new_tokens', 'Max new tokens', 1, 512, 1],
@@ -12,6 +12,14 @@ const FIELDS = [
   ['top_p', 'Top p', 0.05, 1, 0.05],
   ['repetition_penalty', 'Repetition penalty', 1, 2, 0.05],
 ];
+
+// '350M' -> 3.5e8, '1.3B' -> 1.3e9. Smallest first.
+function parameterCount(text) {
+  const match = /^\s*([\d.]+)\s*([KMBT]?)\s*$/i.exec(text || '');
+  if (!match) return Infinity;
+  const scale = { '': 1, K: 1e3, M: 1e6, B: 1e9, T: 1e12 }[match[2].toUpperCase()];
+  return Number(match[1]) * scale;
+}
 
 const DOWNLOADS = [
   { name: 'Pygmalion 350M', repo_id: 'PygmalionAI/pygmalion-350m', parameters: '350M', context_tokens: 2048 },
@@ -30,6 +38,23 @@ function readSampling() {
   }
 }
 
+function Metadata({ rows }) {
+  if (!rows?.length) {
+    return <p className={styles.lead}>No config file on disk for this model yet.</p>;
+  }
+  return rows.map((row) => (
+    <p key={row.label} className={styles.lead}>{row.label}: {String(row.value)}</p>
+  ));
+}
+
+function Prompt({ text }) {
+  if (text == null) return null;
+  if (!text) {
+    return <p className={styles.lead}>This model's card does not include a prompt structure.</p>;
+  }
+  return <pre className={styles.prompt}>{text}</pre>;
+}
+
 export default function Model() {
   const { modelId } = useParams();
   const navigate = useNavigate();
@@ -40,6 +65,26 @@ export default function Model() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [token, setToken] = useState('');
+  const [card, setCard] = useState(null);
+
+  useEffect(() => {
+    if (modelId || !pick) {
+      setCard(null);
+      return undefined;
+    }
+    setCard(null);
+    let stopped = false;
+    modelCard(pick)
+      .then((data) => {
+        if (!stopped) setCard(data);
+      })
+      .catch(() => {
+        if (!stopped) setCard({ fields: [], prompt: '' });
+      });
+    return () => {
+      stopped = true;
+    };
+  }, [modelId, pick]);
 
   useEffect(() => {
     if (!modelId) {
@@ -74,7 +119,9 @@ export default function Model() {
     };
   }, [modelId]);
 
-  const choices = DOWNLOADS.filter((item) => !(shelf || []).some((row) => row.repo_id === item.repo_id));
+  const choices = DOWNLOADS
+    .filter((item) => !(shelf || []).some((row) => row.repo_id === item.repo_id))
+    .sort((left, right) => parameterCount(left.parameters) - parameterCount(right.parameters));
   const chosen = choices.find((item) => item.repo_id === pick) || choices[0] || null;
 
   const add = async (event) => {
@@ -151,7 +198,7 @@ export default function Model() {
       <h1 className="page__title">{record ? record.name : 'New model'}</h1>
       {!record && (
         <form className={`glass glass-panel ${styles.stack}`} onSubmit={add}>
-          <p className={styles.lead}>Pick a model to add. Name, repository, and parameters come from the choice.</p>
+          <p className={styles.lead}>Pick a model to add. The details below are read from its config file once the weights are on disk.</p>
           {choices.length === 0 && shelf && <p className={styles.lead}>Every model in the list is already on the shelf.</p>}
           {chosen && (
             <>
@@ -165,9 +212,10 @@ export default function Model() {
                   ))}
                 </select>
               </label>
-              <p className={styles.lead}>Name: {chosen.name}</p>
               <p className={styles.lead}>Repository: {chosen.repo_id}</p>
-              <p className={styles.lead}>Parameters: {chosen.parameters}</p>
+              <Metadata rows={card?.fields} />
+              <h2 className="glass-panel__title">Prompt</h2>
+              <Prompt text={card?.prompt} />
             </>
           )}
           <div className={styles.actions}>
@@ -206,9 +254,10 @@ export default function Model() {
               </div>
             )}
             <p className={styles.lead}>Repository: {record.repo_id || 'not set yet'}</p>
-            <p className={styles.lead}>Parameters: {record.parameters || 'unknown'}</p>
-            <p className={styles.lead}>Context: {record.context_tokens} tokens{record.device ? ` · ${record.device}` : ''}</p>
-            {record.notes && <p className={styles.lead}>{record.notes}</p>}
+            <Metadata rows={record.metadata} />
+            {record.device && <p className={styles.lead}>Device: {record.device}</p>}
+            <h2 className="glass-panel__title">Prompt</h2>
+            <Prompt text={record.prompt} />
             {record.download_needs_token && (
               <form className={styles.stack} onSubmit={saveToken}>
                 <p className={styles.noteError}>Log in to Hugging Face and paste an access token.</p>

@@ -5,6 +5,7 @@ owns the download so a multi-gigabyte fetch does not run inside the web server.
 """
 import json
 import logging
+import re
 import os
 import shutil
 import subprocess
@@ -327,6 +328,75 @@ def _is_active(job):
 
 def _cache_folder(repo_id):
     return Path(HF_HUB_CACHE) / ('models--' + repo_id.replace('/', '--'))
+
+
+def model_card(repo_id: str) -> list[dict]:
+    """Fields read from the downloaded config and tokenizer files. Nothing is filled in by hand."""
+    folder = _cache_folder(repo_id) / 'snapshots'
+    configs = sorted(folder.glob('*/config.json')) if folder.is_dir() else []
+    if not configs:
+        return []
+    config = json.loads(configs[-1].read_text())
+    tokenizer_path = configs[-1].with_name('tokenizer_config.json')
+    tokenizer = json.loads(tokenizer_path.read_text()) if tokenizer_path.is_file() else {}
+    rows = []
+
+    def take(label, source, *keys):
+        for key in keys:
+            if key in source and source[key] not in (None, ''):
+                value = source[key]
+                if isinstance(value, list):
+                    value = ', '.join(str(item) for item in value)
+                rows.append({'label': label, 'value': value})
+                return
+
+    take('Architecture', config, 'architectures')
+    take('Model type', config, 'model_type')
+    take('Layers', config, 'num_hidden_layers', 'num_layers', 'n_layer')
+    take('Hidden size', config, 'hidden_size', 'n_embd')
+    take('Attention heads', config, 'num_attention_heads', 'num_heads', 'n_head')
+    take('Vocabulary', config, 'vocab_size')
+    take('Max positions', config, 'max_position_embeddings', 'n_positions')
+    take('Tokenizer', tokenizer, 'tokenizer_class')
+    if not any(row['label'] == 'Tokenizer' for row in rows):
+        take('Tokenizer', config, 'tokenizer_class')
+    take('Dtype', config, 'torch_dtype')
+    return rows
+
+
+def prompt_structure(repo_id: str) -> str:
+    """The prompt block from the model card, when the card includes one."""
+    text = _readme(repo_id)
+    if not text:
+        return ''
+    if text.startswith('---'):
+        end = text.find('\n---', 3)
+        if end != -1:
+            text = text[end + 4 :]
+    lowered = text.lower()
+    start = len(text)
+    found = False
+    for marker in ('### the manual way', '## prompting', '### prompting'):
+        index = lowered.find(marker)
+        if index != -1 and index < start:
+            start = index
+            found = True
+    if not found:
+        return ''
+    region = text[start:]
+    nxt = re.search(r'\n## ', region[1:])
+    if nxt:
+        region = region[: nxt.start() + 1]
+    match = re.search(r'```[^\n]*\n(.*?)```', region, re.DOTALL)
+    return match.group(1).strip('\n') if match else ''
+
+
+def _readme(repo_id: str) -> str:
+    folder = _cache_folder(repo_id) / 'snapshots'
+    files = sorted(folder.glob('*/README.md')) if folder.is_dir() else []
+    if not files:
+        return ''
+    return files[-1].read_text()
 
 
 def _weights_cached(repo_id):

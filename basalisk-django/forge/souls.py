@@ -1,6 +1,7 @@
 """Figures are `souls/<slug>/soul.md` files you draft by hand.
 
-`flags.json` beside it defines the placeholders a reply may contain, such as USER.
+`person.json` beside it holds general facts chosen from a fixed set.
+`flags.json` defines the placeholders a reply may contain, such as USER.
 """
 import json
 import os
@@ -9,8 +10,11 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .person import empty_person, normalize_person, schema
+
 SOUL_FILE = 'soul.md'
 FLAGS_FILE = 'flags.json'
+PERSON_FILE = 'person.json'
 DEFAULT_FLAGS = {'USER': 'You'}
 _SLUG = re.compile(r'^[a-z0-9][a-z0-9-]{0,62}$')
 _TITLE = re.compile(r'^#\s+(.+?)\s*#*\s*$', re.MULTILINE)
@@ -66,6 +70,8 @@ def _describe(slug: str, path: Path, content: str | None = None) -> dict:
         'file': f'souls/{slug}/{SOUL_FILE}',
         'content': text,
         'flags': read_flags(slug),
+        'person': read_person(slug),
+        'person_fields': schema(),
         'updated_at': modified.isoformat(),
     }
 
@@ -106,6 +112,7 @@ def create(name: str) -> dict:
     content = template(name)
     path.write_text(content, encoding='utf-8')
     write_flags(slug, DEFAULT_FLAGS)
+    write_person(slug, empty_person())
     return _describe(slug, path, content)
 
 
@@ -120,6 +127,26 @@ def read_flags(slug: str) -> dict:
     if not isinstance(data, dict):
         return {}
     return {str(key): '' if value is None else str(value) for key, value in data.items()}
+
+
+def read_person(slug: str) -> dict:
+    path = _path(slug).with_name(PERSON_FILE)
+    if not path.is_file():
+        return empty_person()
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except json.JSONDecodeError:
+        return empty_person()
+    return normalize_person(data)
+
+
+def write_person(slug: str, person: dict) -> dict:
+    path = _path(slug).with_name(PERSON_FILE)
+    if not path.parent.is_dir() or not (path.parent / SOUL_FILE).is_file():
+        raise SoulNotFound(slug)
+    clean = normalize_person(person)
+    path.write_text(json.dumps(clean, indent=2) + '\n', encoding='utf-8')
+    return clean
 
 
 def write_flags(slug: str, flags: dict) -> dict:

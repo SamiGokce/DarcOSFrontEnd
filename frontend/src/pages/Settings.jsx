@@ -28,6 +28,9 @@ export default function Settings() {
           <p className={styles.lead}>
             Model: {model ? `${model.model}, ${model.context_tokens} token context, ${model.state}` : 'unavailable'}.
           </p>
+          <p className={styles.lead}>
+            Search scores each passage two ways and adds the scores. One score is the words in common. The other is a sentence encoder comparing the meaning. The encoder downloads the first time it is used.
+          </p>
         </section>
       ) : (
         <section className="glass glass-panel">

@@ -3,6 +3,7 @@ from rest_framework import serializers
 from . import downloads
 from .llm import engine
 from .models import Chat, LanguageModel, Message
+from .prompt import shorten_tags
 
 
 class LanguageModelSerializer(serializers.ModelSerializer):
@@ -13,15 +14,18 @@ class LanguageModelSerializer(serializers.ModelSerializer):
     download_percent = serializers.SerializerMethodField()
     download_detail = serializers.SerializerMethodField()
     download_needs_token = serializers.SerializerMethodField()
+    metadata = serializers.SerializerMethodField()
+    prompt = serializers.SerializerMethodField()
 
     class Meta:
         model = LanguageModel
         fields = [
             'id', 'name', 'repo_id', 'parameters', 'context_tokens', 'notes',
             'state', 'detail', 'device', 'download_state', 'download_percent', 'download_detail', 'download_needs_token',
+            'metadata', 'prompt',
             'created_at',
         ]
-        read_only_fields = ['id', 'created_at', 'state', 'detail', 'device', 'download_state', 'download_percent', 'download_detail', 'download_needs_token']
+        read_only_fields = ['id', 'created_at', 'state', 'detail', 'device', 'download_state', 'download_percent', 'download_detail', 'download_needs_token', 'metadata', 'prompt']
 
     def validate_name(self, value):
         value = value.strip()
@@ -56,6 +60,12 @@ class LanguageModelSerializer(serializers.ModelSerializer):
     def get_download_needs_token(self, obj):
         return bool(self._download(obj).get('needs_token'))
 
+    def get_metadata(self, obj):
+        return downloads.model_card(obj.repo_id)
+
+    def get_prompt(self, obj):
+        return shorten_tags(downloads.prompt_structure(obj.repo_id))
+
     def get_state(self, obj):
         download = self._download(obj)
         if download['state'] == 'downloading':
@@ -86,6 +96,7 @@ class LanguageModelSerializer(serializers.ModelSerializer):
 class SoulSerializer(serializers.Serializer):
     content = serializers.CharField(allow_blank=True, trim_whitespace=False, max_length=200_000)
     flags = serializers.DictField(child=serializers.CharField(allow_blank=True), required=False)
+    person = serializers.JSONField(required=False)
 
 
 class NewSoulSerializer(serializers.Serializer):
@@ -95,7 +106,7 @@ class NewSoulSerializer(serializers.Serializer):
 class MessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
-        fields = ['id', 'role', 'content', 'created_at']
+        fields = ['id', 'role', 'content', 'actions', 'created_at']
 
 
 class ChatSerializer(serializers.ModelSerializer):
@@ -144,14 +155,15 @@ class ChatDetailSerializer(ChatSerializer):
 
 class SamplingSerializer(serializers.Serializer):
     max_new_tokens = serializers.IntegerField(min_value=1, max_value=512, default=48)
-    temperature = serializers.FloatField(min_value=0, max_value=2, default=0.8)
+    temperature = serializers.FloatField(min_value=0, max_value=2, default=0.5)
     top_p = serializers.FloatField(min_value=0.05, max_value=1, default=0.9)
-    repetition_penalty = serializers.FloatField(min_value=1, max_value=2, default=1.1)
+    repetition_penalty = serializers.FloatField(min_value=1, max_value=2, default=1.0)
 
 
 class SendSerializer(serializers.Serializer):
     content = serializers.CharField(max_length=4000)
     sampling = SamplingSerializer(default=dict)
+    safety_filter = serializers.BooleanField(default=False)
 
     def validate(self, attrs):
         # A default skips nested validation, so an omitted `sampling` would arrive without its field defaults.
